@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" width="900" height="520" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <title>Hermit Agent architecture</title>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3E2412"/>
+    </marker>
+    <marker id="arrowRev" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3E2412"/>
+    </marker>
+    <style>
+      .box    { fill: #FFF6F0; stroke: #8F3E2D; stroke-width: 1.5; rx: 8; ry: 8; }
+      .boxH   { fill: #FDE6D9; stroke: #8F3E2D; stroke-width: 1.5; rx: 8; ry: 8; }
+      .boxS   { fill: #F1E8D8; stroke: #6B4423; stroke-width: 1.5; rx: 8; ry: 8; }
+      .title  { font-weight: 700; fill: #3E2412; }
+      .sub    { fill: #6B4423; }
+      .link   { stroke: #3E2412; stroke-width: 1.5; fill: none; }
+      .grpTitle { font-weight: 700; fill: #8F3E2D; }
+      .frame  { fill: none; stroke: #D97757; stroke-width: 2; stroke-dasharray: 6 4; rx: 12; ry: 12; }
+    </style>
+  </defs>
+
+  <!-- Header -->
+  <text x="450" y="30" text-anchor="middle" class="title" font-size="18">Hermit Agent — architecture at a glance</text>
+  <text x="450" y="50" text-anchor="middle" class="sub">borrow the shell (Claude Code), bring your own body (persona + memory + skills)</text>
+
+  <!-- User's Mac frame -->
+  <rect x="20" y="75" width="560" height="420" class="frame"/>
+  <text x="40" y="95" class="grpTitle" font-size="14">Your Mac</text>
+
+  <!-- tmux session -->
+  <rect x="50" y="115" width="500" height="340" class="boxS"/>
+  <text x="65" y="135" class="grpTitle">tmux session: claude-&lt;agent&gt;</text>
+
+  <!-- claude CLI -->
+  <rect x="80" y="155" width="440" height="290" class="boxH"/>
+  <text x="100" y="175" class="title">claude CLI (the borrowed shell)</text>
+
+  <!-- persona files -->
+  <rect x="100" y="190" width="180" height="80" class="box"/>
+  <text x="110" y="208" class="title">Persona files</text>
+  <text x="110" y="224" class="sub">SOUL · IDENTITY · USER</text>
+  <text x="110" y="240" class="sub">AGENTS · TOOLS · MEMORY</text>
+  <text x="110" y="258" class="sub">memory/YYYY-MM-DD.md</text>
+
+  <!-- skills -->
+  <rect x="300" y="190" width="200" height="80" class="box"/>
+  <text x="310" y="208" class="title">Skills</text>
+  <text x="310" y="224" class="sub">restart · cron · provision-agent</text>
+  <text x="310" y="240" class="sub">brave-search · browser-automation</text>
+
+  <!-- hooks -->
+  <rect x="100" y="290" width="180" height="80" class="box"/>
+  <text x="110" y="308" class="title">Hooks</text>
+  <text x="110" y="324" class="sub">session-state</text>
+  <text x="110" y="340" class="sub">tool-activity · context-report</text>
+  <text x="110" y="356" class="sub">tg-reply-check (Stop)</text>
+
+  <!-- scripts -->
+  <rect x="300" y="290" width="200" height="80" class="box"/>
+  <text x="310" y="308" class="title">Scripts</text>
+  <text x="310" y="324" class="sub">safe-image · exec-cli-command</text>
+  <text x="310" y="340" class="sub">chrome · playwright-mcp</text>
+  <text x="310" y="356" class="sub">multi-agent-status-report</text>
+
+  <!-- telegram plugin (bun subprocess) -->
+  <rect x="180" y="390" width="240" height="45" class="boxH"/>
+  <text x="200" y="410" class="title">Telegram plugin (bun server.ts)</text>
+  <text x="200" y="425" class="sub">reads STATE_DIR/.env; long-polls Telegram</text>
+
+  <!-- arrows within claude CLI -->
+  <path d="M 190 270 L 190 290" class="link" marker-end="url(#arrow)"/>
+  <path d="M 400 270 L 400 290" class="link" marker-end="url(#arrow)"/>
+  <path d="M 300 370 L 300 390" class="link" marker-end="url(#arrow)"/>
+
+  <!-- STATE_DIR -->
+  <rect x="50" y="465" width="500" height="20" class="boxS"/>
+  <text x="65" y="479" class="sub">~/.claude/channels/telegram-&lt;agent&gt;/  ·  .env (bot token) · access.json (allowlist)</text>
+
+  <!-- right side: Telegram world -->
+  <rect x="620" y="75" width="260" height="280" class="frame"/>
+  <text x="640" y="95" class="grpTitle" font-size="14">Telegram</text>
+
+  <rect x="650" y="115" width="210" height="60" class="box"/>
+  <text x="660" y="135" class="title">Telegram Bot API</text>
+  <text x="660" y="155" class="sub">api.telegram.org/bot&lt;token&gt;/</text>
+  <text x="660" y="170" class="sub">long-poll getUpdates</text>
+
+  <rect x="650" y="195" width="210" height="60" class="box"/>
+  <text x="660" y="215" class="title">Your phone / desktop</text>
+  <text x="660" y="235" class="sub">message the bot</text>
+  <text x="660" y="250" class="sub">receive replies, tool pulses, ctx alerts</text>
+
+  <rect x="650" y="275" width="210" height="60" class="box"/>
+  <text x="660" y="295" class="title">Sibling Hermit agents</text>
+  <text x="660" y="315" class="sub">each with its own bot + tmux session</text>
+  <text x="660" y="330" class="sub">status digest reports every 10 min</text>
+
+  <!-- arrows between Mac and Telegram -->
+  <path d="M 420 412 L 650 145" class="link" marker-end="url(#arrow)" marker-start="url(#arrowRev)"/>
+  <path d="M 650 225 L 870 225" class="link" stroke="#D97757" marker-end="url(#arrow)" marker-start="url(#arrowRev)" opacity="0.4"/>
+
+  <!-- bottom notes -->
+  <text x="450" y="510" text-anchor="middle" class="sub">One bot token + one Telegram chat ID per agent. Multiple hermits sit side-by-side under ~/hermit-agents/ or any folder.</text>
+</svg>

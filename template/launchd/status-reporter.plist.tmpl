@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <!--
+    Status reporter LaunchAgent for the hub hermit agent.
+    Runs scripts/multi-agent-status-report.sh every 10 minutes.
+
+    Install:
+      mkdir -p ~/Library/LaunchAgents
+      cp launchd/status-reporter.plist.tmpl ~/Library/LaunchAgents/com.hermit-agent.{{AGENT_NAME}}.status-reporter.plist
+      launchctl load ~/Library/LaunchAgents/com.hermit-agent.{{AGENT_NAME}}.status-reporter.plist
+
+    Uninstall:
+      launchctl unload ~/Library/LaunchAgents/com.hermit-agent.{{AGENT_NAME}}.status-reporter.plist
+      rm ~/Library/LaunchAgents/com.hermit-agent.{{AGENT_NAME}}.status-reporter.plist
+  -->
+  <dict>
+    <key>Label</key>
+    <string>com.hermit-agent.{{AGENT_NAME}}.status-reporter</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>{{AGENT_DIR}}/scripts/multi-agent-status-report.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>600</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>{{AGENT_DIR}}/.claude/state/status-reporter.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{AGENT_DIR}}/.claude/state/status-reporter.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>{{AGENT_DIR}}</string>
+  </dict>
+</plist>

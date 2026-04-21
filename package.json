@@ -1,0 +1,45 @@
+{
+  "name": "create-hermit-agent",
+  "version": "0.1.0",
+  "description": "Bootstrap a Telegram-connected Claude Code agent. Hermit-crab style — borrow the shell, bring your own body.",
+  "type": "module",
+  "bin": {
+    "create-hermit-agent": "bin/create-hermit-agent.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": ["darwin"],
+  "dependencies": {
+    "prompts": "^2.4.2"
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "telegram",
+    "agent",
+    "bot",
+    "assistant",
+    "hermit-crab"
+  ],
+  "author": "voidborne-d",
+  "license": "MIT",
+  "homepage": "https://github.com/voidborne-d/hermit-agent#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/voidborne-d/hermit-agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/voidborne-d/hermit-agent/issues"
+  },
+  "files": [
+    "bin/",
+    "template/",
+    "assets/",
+    "README.md",
+    "LICENSE"
+  ]
+}

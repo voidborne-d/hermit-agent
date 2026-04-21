@@ -1,0 +1,48 @@
+{
+  "env": {
+    "TELEGRAM_BOT_TOKEN": "{{TG_BOT_TOKEN}}",
+    "TELEGRAM_STATE_DIR": "{{STATE_DIR}}",
+    "TELEGRAM_CHAT_ID": "{{USER_TG_ID}}",
+    "BRAVE_API_KEY": "{{BRAVE_API_KEY}}"
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{AGENT_DIR}}/scripts/hook-session-state.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{AGENT_DIR}}/scripts/hook-context-report.sh"
+          },
+          {
+            "type": "command",
+            "command": "{{AGENT_DIR}}/scripts/hook-session-state.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{AGENT_DIR}}/scripts/hook-tool-activity.sh"
+          },
+          {
+            "type": "command",
+            "command": "{{AGENT_DIR}}/scripts/hook-session-state.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
