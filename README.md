@@ -118,6 +118,16 @@ Edit these files in the generated agent directory:
 
 Don't touch `SOUL.md` unless you intend to change the agent's core disposition.
 
+## Scheduled tasks
+
+Three layers, picked by how long the task must survive:
+
+- **Session-scope** (`cron` skill → `CronCreate`) — dies when the agent restarts. Use for one-shot reminders or probes.
+- **HEARTBEAT.md** — a lazy check the agent runs every time a heartbeat fires. Survives restarts. Use when the task needs session context.
+- **LaunchAgent plist** (or `crontab`) — OS-level, survives everything short of the Mac rebooting. Use for monitoring, log collection, anything that must not be missed.
+
+See the [full walkthrough in `docs/cron.md`](docs/cron.md). The starter LaunchAgent plist lives at `launchd/cron-example.plist.tmpl` inside the generated agent — copy, edit, `launchctl load`.
+
 ## Hub-level status digest
 
 If you run multiple hermits and want the hub to notify you when one gets stuck, enable the LaunchAgent that ships with the template:

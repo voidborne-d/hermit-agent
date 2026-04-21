@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <!--
+    Example LaunchAgent plist for a durable scheduled task.
+
+    Copy this to ~/Library/LaunchAgents/ with a unique filename:
+      cp launchd/cron-example.plist.tmpl \
+         ~/Library/LaunchAgents/com.hermit-agent.{{AGENT_NAME}}.<TASK>.plist
+
+    Then edit: the `Label`, `ProgramArguments` (point it at your script),
+    and `StartInterval` (seconds between runs). Load with `launchctl load`.
+
+    See docs/cron.md for the full walkthrough.
+  -->
+  <dict>
+    <!-- Unique identifier — must match the filename (minus .plist) -->
+    <key>Label</key>
+    <string>com.hermit-agent.{{AGENT_NAME}}.EXAMPLE-TASK</string>
+
+    <!-- The command. First entry is the binary, remaining are argv. -->
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>{{AGENT_DIR}}/scripts/EXAMPLE-TASK.sh</string>
+    </array>
+
+    <!-- How often to run, in seconds. 600 = every 10 minutes. -->
+    <key>StartInterval</key>
+    <integer>600</integer>
+
+    <!-- If true, runs once at load time; otherwise waits until first interval. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Where stdout / stderr go. Kept under .claude/state/ so .gitignore covers it. -->
+    <key>StandardOutPath</key>
+    <string>{{AGENT_DIR}}/.claude/state/EXAMPLE-TASK.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{AGENT_DIR}}/.claude/state/EXAMPLE-TASK.log</string>
+
+    <!-- Optional but useful if the script uses relative paths. -->
+    <key>WorkingDirectory</key>
+    <string>{{AGENT_DIR}}</string>
+  </dict>
+</plist>

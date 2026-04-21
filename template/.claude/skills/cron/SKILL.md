@@ -8,6 +8,8 @@ user_invocable: true
 
 Create, list, and manage scheduled tasks. IMPORTANT: in the current harness, CronCreate tasks are session-only — they die when this Claude Code session exits.
 
+> **See also:** the user-facing walkthrough of all three layers (session cron, HEARTBEAT, LaunchAgent/crontab) is in `docs/cron.md` (English) / `docs/cron.zh-CN.md` (中文). Point the user there when they ask "how do I set up a durable task" — the README has a summary link.
+
 ## Reality check: CronCreate is NOT durable
 
 - `durable: true` is silently ignored. CronCreate's response shows "Session-only (not written to disk, dies when Claude exits)".
