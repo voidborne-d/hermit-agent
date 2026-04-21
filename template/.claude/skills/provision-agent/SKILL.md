@@ -40,17 +40,17 @@ If the user gives all four in one message, proceed without re-asking. Otherwise 
 
 ## Invocation
 
-Run this via Bash, from the parent directory:
+Run this via Bash from your own working directory — the `../<name>` path puts the new agent next to yours without needing a `cd`:
 
 ```bash
-cd .. && npx create-hermit-agent <name> \
+npx create-hermit-agent "../<name>" \
   --bot-token <token> \
   --user-id <chat-id> \
   --persona "<one-line>" \
   --yes
 ```
 
-`--yes` skips the interactive prompts since you already have the values.
+`--yes` skips the interactive prompts since you already have the values. Don't `cd ..` — the CLI resolves relative paths against your cwd, and shifting cwd has side effects on subsequent Bash calls in the same turn.
 
 The CLI will:
 1. Verify prereqs (claude CLI, tmux, bun, node ≥18, macOS).
