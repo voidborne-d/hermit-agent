@@ -4,7 +4,7 @@
 
 # Hermit Agent
 
-**A Telegram-connected Claude Code agent. Borrow the shell, bring your own body.**
+**A Telegram assistant that runs Claude Code on your Mac. Borrow the shell, bring your own body.**
 
 [English](README.md) · [中文](README.zh-CN.md)
 
@@ -12,118 +12,135 @@
 
 ---
 
-Hermit Agent is a long-lived Claude Code session in a `tmux` pane, wired to a Telegram bot, with a small set of markdown files that give it a persistent identity and memory across restarts. The agent is the hermit crab. Claude Code is the shell. Your files are the body.
+## What is this?
 
-## Quickstart
+An AI assistant you **chat with on Telegram**, powered by **Claude Code running on your Mac**. It has a personality you can edit, remembers what you talk about between restarts, can browse the web, run scheduled tasks, and spin up more assistants when you need them.
 
-Prereqs (macOS): [Claude Code](https://docs.claude.com/claude-code), Node 18+, `brew install tmux jq`, `curl -fsSL https://bun.sh/install | bash`.
+The pattern: an AI agent (the hermit crab) lives inside Claude Code (the borrowed shell). The files in its folder are its body — edit them and you edit the agent.
 
-One command bootstraps your hub agent:
+## Install
+
+Prereqs (macOS):
+
+- [Claude Code](https://docs.claude.com/claude-code), installed and logged in
+- Node 18+
+- `brew install tmux jq`
+- `curl -fsSL https://bun.sh/install | bash`
+
+One command:
 
 ```bash
 npx create-hermit-agent
 ```
 
-No `npx create-hermit-agent <name>` is also fine — the default name is `asst`. The CLI will ask for a Telegram bot token (from [@BotFather](https://t.me/BotFather)) and your user ID (from [@userinfobot](https://t.me/userinfobot)), then scaffold, register the telegram plugin at project scope, and write the bot token to `~/.claude/channels/telegram-<name>/.env`.
+It asks you for a Telegram bot token (get one from [@BotFather](https://t.me/BotFather)) and your Telegram user ID (get it from [@userinfobot](https://t.me/userinfobot)). Then it scaffolds a folder called `asst/` in your current directory, sets up the plugin, and writes your token to a protected file.
 
-Then:
+Start it:
 
 ```bash
 cd asst && ./start.sh
 ```
 
-DM your bot. On the first message the hub orients you — how to create more agents, the `!!` command sigil, how to customize the persona.
+Now open Telegram, find the bot you created, and send it a message.
 
-> **Q: Do I need to pre-install the telegram plugin in Claude Code?**  
-> No. The CLI runs `claude plugin install -s project` for every new agent. First install downloads to the shared `~/.claude/plugins/cache/`; subsequent agents register against that cache per-project. Zero plugin setup on your side.
+## First message: asst introduces itself
 
-## Multi-agent: hub spawns siblings
+Your default agent is called **asst**. The first time you DM it, asst sends you a short orientation: how to talk to it, what commands exist, how to spawn more agents. After that orientation, it deletes its own `FIRST_RUN.md` so it never greets you again.
 
-Run `npx create-hermit-agent` **once**. Every other agent you want, just tell the hub:
+From that point on, you just talk:
 
-> "Create a hermit called `github-bot` with token `123:ABC...`. Purpose: triage my GitHub notifications."
+> You: remind me at 3pm to call mom  
+> asst: scheduled — I'll ping you at 3pm today.
 
-The hub's `provision-agent` skill scaffolds the sibling at `../github-bot/`, installs the plugin, starts it in its own tmux session, replies with the new bot's `@handle`.
+## Creating more agents
 
-## What's in the box
+Don't run `npx create-hermit-agent` a second time. Instead, tell **asst**:
 
-- **Memory & persona** — `SOUL · IDENTITY · USER · AGENTS · TOOLS · MEMORY.md` + `memory/YYYY-MM-DD.md`. Restart and the agent still knows who it is.
-- **Telegram** — reply/react/edit/download. `!!compact`, `!!model opus`, `!!status` inject CLI commands. Group-chat etiquette built in. A Stop hook blocks turn-end if a DM arrived but no reply went out.
-- **Lifecycle** — `./start.sh` / `./restart.sh` (tmux-based, plugin-alive check + retry). Context-tier alerts at 100k/200k/…/950k. Tool-activity heartbeat every 1st + 5th call.
-- **Automation** — skills: `restart`, `cron`, `brave-search`, `browser-automation`, `provision-agent`. Self-managed Chrome + Playwright CDP (explore → record → replay via `browser-lock.sh`).
-- **Safety** — mandatory `safe-image.sh` before any image Read. Hard rule against `find /`. Tokens live outside the repo in mode-600 `.env`. Opt-in multi-agent status digest via LaunchAgent.
+> "Create a new agent called `github-bot` with token `123:ABC…`. Purpose: triage my GitHub notifications."
 
-## Architecture
+asst scaffolds a sibling agent at `../github-bot/`, installs its plugin, starts it in its own terminal session, and tells you the new bot's `@handle`. DM the new bot to wake it.
+
+Run as many as you want. They're independent — separate bot tokens, separate memory, separate folders.
+
+## What each agent can do
+
+- **Memory & personality.** Every session it reads `SOUL.md / IDENTITY.md / USER.md / AGENTS.md / TOOLS.md / MEMORY.md` to boot up its self. Writes daily logs to `memory/YYYY-MM-DD.md`. Restart and it still knows who it is.
+- **Telegram.** First-class reply, reactions, edits, attachment downloads. Group-chat etiquette built in. Prefix any message with `!!` to run a Claude Code command (`!!compact`, `!!model opus`, `!!status`). A guard hook refuses to end a turn if it got a DM but didn't reply.
+- **Lifecycle.** `./start.sh` starts the agent in a detached `tmux` pane. `./restart.sh` restarts without dropping Telegram. It pings you when context crosses 100k / 200k / ... / 950k tokens and when it's been running a lot of tools.
+- **Automation.** Built-in skills: `restart`, `cron`, `brave-search`, `browser-automation`, `provision-agent` (the "create more agents" one). Browser automation uses a dedicated Chrome profile with Playwright and stealth anti-detection.
+- **Safety.** Every image goes through a resize step before being read (a stray 4K screenshot otherwise kills the session). Tokens never touch the repo. Multi-agent status is an opt-in LaunchAgent — off by default.
+
+## How it works
 
 ```
-┌──────────────────── Your Mac ──────────────────────┐        ┌── Telegram ──┐
-│   tmux session  claude-<agent>                      │        │  Bot API     │
-│   ┌───────────────────────────────────────────┐    │        │  long-poll   │
-│   │  claude CLI  (the borrowed shell)          │    │        │              │
-│   │  ┌──────────┐  ┌─────────────────────┐   │    │        │              │
-│   │  │ Persona  │  │ Skills + Hooks      │   │    │◄──────►│  @yourbot    │
-│   │  │ *.md     │  │ restart · cron ·    │   │    │        │              │
-│   │  │ memory/  │  │ provision · browser │   │    │        │              │
-│   │  └──────────┘  └─────────────────────┘   │    │        │              │
-│   │        Telegram plugin (bun server.ts)    │    │        │              │
-│   └──────────────┬───────────────────────────┘    │        │              │
-│                  │                                  │        │              │
-│  ~/.claude/channels/telegram-<agent>/ (.env)        │        │              │
-└─────────────────────────────────────────────────────┘        └──────────────┘
+┌────────────── Your Mac ──────────────┐       ┌─ Telegram ─┐
+│                                       │       │            │
+│  tmux session   claude-asst           │       │  Bot API   │
+│  ┌───────────────────────────────┐   │       │            │
+│  │  claude  (the borrowed shell)  │   │       │            │
+│  │  ┌────────┐  ┌───────────────┐ │   │       │            │
+│  │  │Persona │  │ Skills + Hooks│ │   │◄─────►│ @yourbot   │
+│  │  │*.md    │  │ restart · cron│ │   │       │            │
+│  │  │memory/ │  │ provision ... │ │   │       │            │
+│  │  └────────┘  └───────────────┘ │   │       │            │
+│  │     Telegram plugin (bun)      │   │       │            │
+│  └────────────────────────────────┘   │       │            │
+│                                       │       │            │
+│  ~/.claude/channels/telegram-asst/    │       │            │
+│    (bot token lives here, not repo)   │       │            │
+└───────────────────────────────────────┘       └────────────┘
 ```
 
 Higher-res SVG: [assets/arch.svg](assets/arch.svg).
 
-## Customizing
+## Customize your agent
 
-Edit in the generated agent directory:
+Edit these files in your agent folder:
 
-- **`IDENTITY.md`** — name, vibe, mission.
-- **`USER.md`** — who you are.
-- **`AGENTS.md`** — find `<!-- MISSION-START -->` and fill in.
-- **`TOOLS.md`** — find `<!-- AGENT-SPECIFIC-START -->` for repo links, API keys, domain notes.
+- **`IDENTITY.md`** — name, vibe, one-line purpose.
+- **`USER.md`** — who you are (pronouns, timezone, notes).
+- **`AGENTS.md`** — find the `<!-- MISSION-START -->` block, fill in what this agent is for.
+- **`TOOLS.md`** — find the `<!-- AGENT-SPECIFIC-START -->` block for API keys, repo links, domain notes.
 
-Don't edit `SOUL.md` unless you want a different disposition.
+`SOUL.md` holds the agent's baseline disposition. Don't edit unless you want a different personality.
 
 ## Scheduled tasks
 
-Three layers. Pick by how long the task must survive.
+Three ways to run periodic work, picked by how long it must survive:
 
-| Layer | Survives restart? | Use for |
+| Option | Survives restart? | Use for |
 |---|---|---|
 | `cron` skill (`CronCreate`) | ❌ session-only | one-shot reminders, probes |
-| `HEARTBEAT.md` | ✅ next wake | lazy checks needing session context |
-| LaunchAgent / `crontab` | ✅ OS-level | monitoring, anything must-not-miss |
+| `HEARTBEAT.md` | ✅ next wake | lazy checks that need the agent to think |
+| LaunchAgent plist / `crontab` | ✅ OS-level | monitoring, must-not-miss work |
 
-### 1. Session-scope — the `cron` skill
+### Session-only: the `cron` skill
 
-Tell the agent:
+Just tell the agent:
 
 > "Every 30 minutes, glance at `memory/today.md` and flag anything urgent."
 
-It produces a `CronCreate` call with a bootstrap prompt that reads your persona files first, runs the task, logs to today's daily memory, and replies via Telegram. `durable: true` is a no-op in the current harness — tasks die on restart.
+It creates a `CronCreate` task that reads your persona files, runs the check, logs to today's memory, and replies via Telegram. The task dies when the agent restarts.
 
-### 2. HEARTBEAT.md
+### HEARTBEAT.md
 
-For checks that need Claude's reasoning AND must survive restarts, wire a LaunchAgent that injects `"Heartbeat check."` into your tmux pane every N minutes. On each heartbeat the agent reads `HEARTBEAT.md` to decide what to do. What-to-do lives in markdown (agent can edit); when-to-fire lives in OS.
+If you want checks that survive restarts AND use Claude's reasoning, wire a LaunchAgent that injects `"Heartbeat check."` into the agent's tmux pane every N minutes. On each heartbeat the agent reads `HEARTBEAT.md` and acts. What-to-do in markdown, when-to-fire in OS.
 
-### 3. LaunchAgent plist (durable)
+### LaunchAgent plist (durable)
 
-macOS's `crontab -e` can hang silently waiting for a Full Disk Access prompt. Use a LaunchAgent instead. The template ships `launchd/cron-example.plist.tmpl`:
+macOS's `crontab -e` can hang silently on a Full Disk Access prompt. Use a LaunchAgent instead. The template ships an example at `launchd/cron-example.plist.tmpl`:
 
 ```bash
 AGENT=$(basename "$PWD")
 cp launchd/cron-example.plist.tmpl \
    ~/Library/LaunchAgents/com.hermit-agent.${AGENT}.<TASK>.plist
-# edit Label, ProgramArguments, StartInterval
+# Edit Label, ProgramArguments, StartInterval.
 launchctl load ~/Library/LaunchAgents/com.hermit-agent.${AGENT}.<TASK>.plist
 ```
 
 Verify: `launchctl list | grep hermit-agent`. Unload: `launchctl unload <path>`.
 
-### Ping Telegram from cron
-
-Any durable task can reuse the hub's credentials:
+### Ping Telegram from a cron task
 
 ```bash
 token=$(jq -r '.env.TELEGRAM_BOT_TOKEN' .claude/settings.local.json)
@@ -134,33 +151,52 @@ curl -sS -X POST "https://api.telegram.org/bot${token}/sendMessage" \
 
 `scripts/multi-agent-status-report.sh` is a working example.
 
-## Hub status digest (optional)
+## Optional: multi-agent status digest
 
-One hermit per Mac can be designated the hub. Install its LaunchAgent to push a digest of all sibling agents every 10 min (🟢 idle · 🟨 running · 🟥 stuck · ⚫ down):
+If you're running several agents, have asst push a digest of their states (🟢 idle · 🟨 running · 🟥 stuck · ⚫ down) to you every 10 minutes:
 
 ```bash
 cp launchd/status-reporter.plist.tmpl \
-   ~/Library/LaunchAgents/com.hermit-agent.<agent>.status-reporter.plist
-launchctl load ~/Library/LaunchAgents/com.hermit-agent.<agent>.status-reporter.plist
+   ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist
+launchctl load ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist
 ```
+
+Install on one agent per machine — asst is the natural choice.
 
 ## Troubleshooting
 
-| Problem | Fix |
+| Symptom | Fix |
 |---|---|
-| Agent doesn't reply | `tmux attach -t claude-<name>`; check `restart.log` and `claude-agent.log`. |
-| Plugin subprocess missing | `./restart.sh` retries once. If still failing, verify `~/.claude/channels/telegram-<name>/.env` is mode 600 with the token. |
-| Image dimension crash | Every Read on an image must go through `scripts/safe-image.sh` first. Restart + compact if missed. |
-| `claude plugin install failed` | Ensure `claude` is on PATH and logged in (`claude login`). |
-| Context bloat | Telegram: `!!compact`. Or type `/compact` in the tmux pane. |
+| Agent doesn't reply | `tmux attach -t claude-<name>` to see what's happening. Also check `restart.log` and `claude-agent.log`. |
+| Plugin subprocess missing | `./restart.sh` retries once. If still broken, check `~/.claude/channels/telegram-<name>/.env` is mode 600 and contains the token. |
+| "exceeds the dimension limit" (image crash) | Every image Read must go through `scripts/safe-image.sh` first. Restart + `/compact` to recover. |
+| `claude plugin install failed` | Make sure `claude` is on PATH and you're logged in (`claude login`). |
+| Context bloat | Telegram: `!!compact`. Or `/compact` in the tmux pane. |
+
+## FAQ
+
+**Do I need to pre-install the telegram plugin in Claude Code?**  
+No. `create-hermit-agent` runs `claude plugin install -s project` for every new agent. First install downloads the plugin into the shared cache at `~/.claude/plugins/cache/`; subsequent agents reference that cache per-project. Zero plugin setup on your end.
+
+**Does it work on Linux or Windows?**  
+Currently macOS only — `launchctl`, `sips`, `tmux` are all macOS-shaped. Linux/Windows support is a welcome contribution.
+
+**Can I run multiple agents with the same bot token?**  
+No. Telegram's Bot API gives each bot's updates to exactly one listener. A shared token means one agent hijacks the other's messages. Each agent needs its own `@BotFather`-issued token.
+
+**Where's my bot token stored?**  
+In `~/.claude/channels/telegram-<name>/.env` (mode 600, outside the project). It's also echoed into `.claude/settings.local.json`, which is gitignored.
+
+**Can I delete an agent cleanly?**  
+Yes: `tmux kill-session -t claude-<name>`, then `rm -rf <agent-folder>` and `rm -rf ~/.claude/channels/telegram-<name>`. Also revoke the bot via `@BotFather` if you're done with it.
 
 ## Credits
 
 Hermit Agent draws from three projects:
 
-- **[Claude Code](https://docs.claude.com/claude-code)** — the CLI that hosts the agent; this project is literally a hermit crab on top of it.
-- **OpenClaw** — the self-managed browser + Chrome profile pattern informed `chrome-launcher.sh` + `browser-lock.sh`.
-- **Hermas agent** — earlier personal-assistant prototype; hermit's autonomous-evolution pattern and memory module design came from here.
+- **[Claude Code](https://docs.claude.com/claude-code)** — the CLI that hosts each agent. This project is literally a hermit crab on top of it.
+- **OpenClaw** — the self-managed-browser / Chrome-profile pattern behind `chrome-launcher.sh` and `browser-lock.sh`.
+- **Hermas agent** — earlier personal-assistant prototype. Hermit inherited its autonomous-evolution pattern and memory-module design.
 
 ## License
 

@@ -1,17 +1,17 @@
 ---
 name: provision-agent
-description: Spawn a new sibling Hermit agent on behalf of the user. Use when the user asks to "create a new agent", "new bot", "add a hermit", "spin up another", etc. The user never runs `npx` themselves after the initial hub — you do it for them.
+description: Spawn a new sibling Hermit agent on behalf of the user. Use when the user asks to "create a new agent", "new bot", "add a hermit", "spin up another", etc. The user never runs `npx` themselves after installing asst — you do it for them.
 user_invocable: true
 ---
 
-# Provision a New Hermit (hub-driven)
+# Provision a New Hermit (asst spawns siblings)
 
-Your user runs `npx create-hermit-agent` **once** to bootstrap you — the hub. Every additional hermit they need, they ask *you* for via Telegram. This skill handles that request end-to-end.
+Your user runs `npx create-hermit-agent` **once** to bootstrap you — the default agent is called **asst**. Every additional hermit they need, they ask *you* for via Telegram. This skill handles that request end-to-end.
 
 ## The flow at a glance
 
 ```
-  user ──"create an agent called X for purpose Y"──► you (the hub)
+  user ──"create an agent called X for purpose Y"──► asst (you)
                                                      │
                                                      ▼
                                             npx create-hermit-agent
@@ -31,7 +31,7 @@ New agents land as **siblings** — in the parent directory of your workspace, n
 
 Before running anything, you need four things from the user (ask via Telegram reply if any are missing):
 
-1. **Name** — folder-safe name, e.g. `github-bot`, `journal-agent`. Must not already exist next to this workspace.
+1. **Name** — folder-safe name, e.g. `gitasst-bot`, `journal-agent`. Must not already exist next to this workspace.
 2. **Bot token** — a new token from [@BotFather](https://t.me/BotFather). The user must have already created a bot; do not try to create one for them.
 3. **Persona** — one-line description: what should this agent focus on?
 4. **User chat ID** — default to this agent's own `env.TELEGRAM_CHAT_ID` (from `.claude/settings.local.json`). Only ask if the user wants the new agent to route to a different chat.
@@ -91,7 +91,7 @@ Send a single Telegram reply with:
 Example:
 
 ```
-Spun up github-bot at ../github-bot — DM @github_bot_f3a to wake them.
+Spun up gitasst-bot at ../gitasst-bot — DM @gitasst_bot_f3a to wake them.
 Mission: triage GitHub notifications, flag anything from maintainers of
 repos I star.
 ```

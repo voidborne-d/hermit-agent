@@ -160,7 +160,7 @@ async function collectAnswers(values, positional) {
   if (nameArg) {
     name = nameArg;
   } else if (values.yes) {
-    // Default the hub-install name to `asst` for non-interactive mode.
+    // Default the first-install name to `asst` for non-interactive mode.
     name = 'asst';
   } else {
     const { input } = await prompts({
@@ -463,7 +463,7 @@ async function main() {
   console.log(`  3. Attach to the session to watch:`);
   console.log(`       tmux attach -t ${tmuxSession}    ${dim('(detach: Ctrl-b d)')}`);
   console.log('');
-  console.log(dim(`Hub multi-agent status reports are disabled by default. To enable:`));
+  console.log(dim(`Multi-agent status digest (optional, runs on asst only) is off by default. To enable:`));
   console.log(dim(`  cp ${join(answers.targetDir, 'launchd/status-reporter.plist.tmpl')} ~/Library/LaunchAgents/com.hermit-agent.${answers.agentName}.status-reporter.plist`));
   console.log(dim(`  launchctl load ~/Library/LaunchAgents/com.hermit-agent.${answers.agentName}.status-reporter.plist`));
   console.log('');
