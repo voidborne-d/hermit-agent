@@ -6,7 +6,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEMPLATE_DIR = resolve(__dirname, 'template');
+const TEMPLATE_DIR = resolve(__dirname, '..', 'template');
 const TARGET = '/tmp/hermit-smoke-out';
 
 const TEXT_EXTS = new Set(['.md', '.json', '.js', '.ts', '.sh', '.bash', '.zsh', '.plist', '.toml', '.yml', '.yaml', '.tmpl', '.gitkeep', '.gitignore']);

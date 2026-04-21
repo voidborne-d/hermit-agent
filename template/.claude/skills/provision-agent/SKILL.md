@@ -1,101 +1,132 @@
 ---
 name: provision-agent
-description: Spawn a new sibling Hermit agent via `npx create-hermit-agent`. Use when the user asks to "create a new agent", "new bot", "spin up another hermit", etc.
+description: Spawn a new sibling Hermit agent on behalf of the user. Use when the user asks to "create a new agent", "new bot", "add a hermit", "spin up another", etc. The user never runs `npx` themselves after the initial hub — you do it for them.
 user_invocable: true
 ---
 
-# Provision a New Hermit Agent
+# Provision a New Hermit (hub-driven)
 
-When the user asks for a new agent, spawn a sibling Hermit under `~/claudeclaw/<name>/` using the bootstrap CLI.
+Your user runs `npx create-hermit-agent` **once** to bootstrap you — the hub. Every additional hermit they need, they ask *you* for via Telegram. This skill handles that request end-to-end.
+
+## The flow at a glance
+
+```
+  user ──"create an agent called X for purpose Y"──► you (the hub)
+                                                     │
+                                                     ▼
+                                            npx create-hermit-agent
+                                            (called via Bash, --yes mode)
+                                                     │
+                                                     ▼
+                                            ../<name>/ scaffolded
+                                            ../<name>/start.sh → tmux session
+                                                     │
+                                                     ▼
+  user ◄──"ready, DM @<newbot> to wake them"── you
+```
+
+New agents land as **siblings** — in the parent directory of your workspace, not inside it. Each gets its own bot token, its own `tmux` session (`claude-<name>`), and its own directory.
 
 ## Arguments to collect
 
-Before launching, ask the user (via Telegram reply) for:
+Before running anything, you need four things from the user (ask via Telegram reply if any are missing):
 
-1. **Name** — folder name under `~/claudeclaw/` (must not already exist).
-2. **Bot token** — a new token from @BotFather on Telegram.
-3. **Persona** — one-line description of what this agent should focus on (e.g. "handle GitHub notifications", "research ML papers", "manage my calendar").
-4. _(Optional)_ Chat ID — if the user wants the new agent routed to a different chat. Default: the same chat ID as this agent (`env.TELEGRAM_CHAT_ID`).
+1. **Name** — folder-safe name, e.g. `github-bot`, `journal-agent`. Must not already exist next to this workspace.
+2. **Bot token** — a new token from [@BotFather](https://t.me/BotFather). The user must have already created a bot; do not try to create one for them.
+3. **Persona** — one-line description: what should this agent focus on?
+4. **User chat ID** — default to this agent's own `env.TELEGRAM_CHAT_ID` (from `.claude/settings.local.json`). Only ask if the user wants the new agent to route to a different chat.
 
-If the user provides all of these in one message, don't re-ask — proceed.
+If the user gives all four in one message, proceed without re-asking. Otherwise ask only for the missing pieces.
 
 ## Invocation
 
+Run this via Bash, from the parent directory:
+
 ```bash
-npx create-hermit-agent <name> \
+cd .. && npx create-hermit-agent <name> \
   --bot-token <token> \
   --user-id <chat-id> \
   --persona "<one-line>" \
   --yes
 ```
 
-`--yes` skips the interactive prompts since we already have the values.
+`--yes` skips the interactive prompts since you already have the values.
 
 The CLI will:
 1. Verify prereqs (claude CLI, tmux, bun, node ≥18, macOS).
-2. Validate the bot token against Telegram's getMe.
-3. Copy the template into `~/claudeclaw/<name>/`.
+2. Validate the bot token against Telegram's `getMe`.
+3. Copy the template into `../<name>/`.
 4. Write `~/.claude/channels/telegram-<name>/.env` with the token.
-5. Run `claude plugin install telegram@claude-plugins-official -s project` inside the new agent's directory.
-6. `npm install playwright` inside the new agent (for browser-automation).
-7. Generate `start.sh` with absolute paths.
-8. Print next steps.
+5. Run `claude plugin install telegram@claude-plugins-official -s project`.
+6. `npm install` Playwright inside the new agent.
+7. Print next steps.
 
-Typical wall-clock: ~20–30s.
+Typical wall-clock: 20–30 seconds.
 
-## After provisioning
+## Launching the new agent
 
-Start the new agent in tmux:
+After `npx create-hermit-agent` exits 0:
 
 ```bash
-~/claudeclaw/<name>/start.sh
+../<name>/start.sh
 ```
 
-Then fetch the bot's @username so the user knows which handle to DM:
+This creates a new tmux session `claude-<name>` and launches the agent inside. It does NOT replace your own tmux session.
+
+Then fetch the new bot's `@username`:
 
 ```bash
 curl -sS -m 8 "https://api.telegram.org/bot<TOKEN>/getMe" | jq -r '.result.username'
 ```
 
-Reply to the user via Telegram with:
-- Agent name + workspace path
-- tmux session name (`claude-<name>`)
-- Bot @username
+## Reply to the user
+
+Send a single Telegram reply with:
+
+- Agent name + sibling path
+- Bot `@username`
 - Persona summary
-- A note that they can DM the bot directly to trigger the startup greeting.
+- Instruction: "DM @&lt;username&gt; to wake them."
 
-## What you should NOT do
+Example:
 
-- **Do not** hand-roll the directory tree. The CLI is the single source of truth — if anything's off, fix the CLI, not the output.
-- **Do not** share bot tokens across agents. Each agent needs its own.
-- **Do not** pre-populate the new agent's MEMORY.md with facts from your own — the user will want a clean canvas.
-- **Do not** `cd` into the new agent and run claude manually. Use `start.sh` so the tmux session is created with the agent name convention.
+```
+Spun up github-bot at ../github-bot — DM @github_bot_f3a to wake them.
+Mission: triage GitHub notifications, flag anything from maintainers of
+repos I star.
+```
 
-## Stopping and listing agents
+## Hard rules — don't do these
 
-**Stop:**
+- **Don't bypass the CLI.** `npx create-hermit-agent` is the single source of truth. If scaffolding is broken, fix the CLI; never hand-roll the directory tree.
+- **Don't share a bot token across agents.** Each needs a unique one from BotFather. If the user accidentally reuses a token, the second agent will hijack the first's updates.
+- **Don't pre-populate the new agent's MEMORY.md with facts from your own.** That's their canvas.
+- **Don't `cd` into the new agent and run `claude` manually** — always go through `start.sh` so the `tmux` session gets the right name.
+- **Don't create agents nested inside your own workspace** (`./<name>/` instead of `../<name>/`). Siblings are independent — nested would get caught by your permission rules and your git scope.
+
+## Stopping and listing
+
+**Stop an agent:**
 ```bash
 tmux kill-session -t "claude-<name>"
 ```
 
-**List all agents:**
+**List all sibling agents:**
 ```bash
-for d in ~/claudeclaw/*/; do
+for d in ../*/; do
   name=$(basename "$d")
+  [ "$d" = "../$(basename "$(pwd)")/" ] && continue
+  [ -f "$d/CLAUDE.md" ] || continue
   if [ -f "$d/agent.pid" ]; then
     pid=$(cat "$d/agent.pid")
     kill -0 "$pid" 2>/dev/null && status="running (PID $pid)" || status="stopped"
   else
-    status="no pid file"
+    status="never started"
   fi
   echo "$name: $status"
 done
 ```
 
-## After creating, the user should:
+## What the user should do after you reply
 
-1. DM the bot to wake it.
-2. Customize `IDENTITY.md`, `USER.md`, `AGENTS.md` (MISSION section), `TOOLS.md` (AGENT-SPECIFIC section) for the new persona.
-3. Optionally add a `HEARTBEAT.md` if they want periodic check-ins.
-
-Don't do this for them — confirm it's the new agent's job.
+They'll DM the new bot to trigger its startup greeting. Over time they may customize `IDENTITY.md`, `USER.md`, the `MISSION` block in `AGENTS.md`, and the `AGENT-SPECIFIC` block in `TOOLS.md` — but that's their call, not yours. Don't customize these files on behalf of a new agent unless the user explicitly asks you to.
