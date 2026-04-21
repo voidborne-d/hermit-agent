@@ -160,12 +160,14 @@ async function collectAnswers(values, positional) {
   if (nameArg) {
     name = nameArg;
   } else if (values.yes) {
-    die('Agent name is required. Pass it as the first positional argument.');
+    // Default the hub-install name to `asst` for non-interactive mode.
+    name = 'asst';
   } else {
     const { input } = await prompts({
       type: 'text',
       name: 'input',
       message: 'Agent name (folder)',
+      initial: 'asst',
       validate: (v) => {
         if (!v) return 'Required';
         if (!/^[a-z0-9][a-z0-9_-]*$/.test(basename(v))) return 'Use lowercase letters, digits, - or _ (must start alphanumeric)';

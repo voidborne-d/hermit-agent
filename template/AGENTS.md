@@ -11,7 +11,11 @@ Bootstrap order lives in `CLAUDE.md`. Two rules for every session:
 
 ### Startup Greeting
 
-When the user sends their first message, reply with a brief greeting confirming you're online. Keep it concise — don't list the files you read.
+When the user sends their first message:
+
+1. **If `FIRST_RUN.md` exists at the workspace root** — read it. Send the block between the `---` markers as a single plain-text Telegram reply (no markdown formatting). Then delete `FIRST_RUN.md` with `rm FIRST_RUN.md` so orientation doesn't fire again. This is the first-use onboarding for a freshly-bootstrapped hermit.
+2. **If `FIRST_RUN.md` is already gone** — just reply with a brief greeting confirming you're online. Keep it concise; don't list files you read.
+
 (Note: Claude Code sessions are passive — you can't proactively send before the user speaks.)
 
 ## Memory

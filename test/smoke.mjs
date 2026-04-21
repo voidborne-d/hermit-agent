@@ -91,6 +91,15 @@ const checks = [
     !readFileSync(join(TARGET, 'TOOLS.md'), 'utf8').includes('{{')],
   ['skills/provision-agent/SKILL.md present',
     existsSync(join(TARGET, '.claude/skills/provision-agent/SKILL.md'))],
+  ['FIRST_RUN.md present with substituted AGENT_DIR',
+    existsSync(join(TARGET, 'FIRST_RUN.md')) &&
+    readFileSync(join(TARGET, 'FIRST_RUN.md'), 'utf8').includes(TARGET)],
+  ['cron-example plist substituted AGENT_DIR + AGENT_NAME',
+    existsSync(join(TARGET, 'launchd/cron-example.plist')) &&
+    readFileSync(join(TARGET, 'launchd/cron-example.plist'), 'utf8').includes(`com.hermit-agent.smoke-test.`) &&
+    readFileSync(join(TARGET, 'launchd/cron-example.plist'), 'utf8').includes(TARGET)],
+  ['AGENTS.md has FIRST_RUN orientation rule',
+    readFileSync(join(TARGET, 'AGENTS.md'), 'utf8').includes('If `FIRST_RUN.md` exists')],
 ];
 
 let pass = 0, fail = 0;
