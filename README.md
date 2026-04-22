@@ -177,6 +177,7 @@ The CLI automatically installs a `launchd` coordinator the first time you run it
 | `exceeds the dimension limit` image crash | All image Reads MUST go through `scripts/safe-image.sh` first. Recover with restart + `/compact`. |
 | `claude plugin install failed` | Ensure `claude` is on PATH and logged in (`claude login`). |
 | Context bloat | Send `!!compact` from Telegram, or `/compact` directly in the tmux pane. |
+| Bot silent on a fresh Mac | Claude Code may have raised the "trust this folder" or "allow dangerous mode" TUI dialog — which blocks startup. The CLI pre-acknowledges both, but if something went wrong, `tmux attach -t claude-<name>`, press Enter to dismiss any pending dialog, then detach with Ctrl-b d. |
 
 ---
 

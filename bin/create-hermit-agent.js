@@ -379,6 +379,66 @@ function npmInstall(targetDir) {
   }
 }
 
+// --- Pre-acknowledge first-run dialogs ---
+//
+// Claude Code raises two blocking TUI dialogs on a fresh Mac:
+//   1) "Do you trust this folder?"         (per-project, first time in each dir)
+//   2) "Allow dangerously-skip-permissions warning?"  (user-scope, once ever)
+//
+// Both block startup inside the tmux pane. Since the agent is headless and the
+// user is interacting via Telegram, nobody is there to press Enter — the bot
+// appears dead. We pre-acknowledge both by writing the persistence keys Claude
+// Code would have written itself after the user confirmed.
+//
+// The key names were confirmed against the shipped claude binary
+// (v2.1.117) — binary includes a migration routine (iAK) that moves legacy
+// bypassPermissionsModeAccepted → settings.json skipDangerousModePermissionPrompt.
+// We write the current-canonical name directly.
+
+function preAcknowledgeClaudeDialogs(targetDir) {
+  step('Pre-acknowledging first-run Claude Code dialogs…');
+
+  // 1. User-scope: skipDangerousModePermissionPrompt.
+  //    Lives in ~/.claude/settings.json. Set once, applies to all claude runs.
+  const userSettingsPath = join(homedir(), '.claude', 'settings.json');
+  try {
+    mkdirSync(dirname(userSettingsPath), { recursive: true });
+    let s = {};
+    if (existsSync(userSettingsPath)) {
+      s = JSON.parse(readFileSync(userSettingsPath, 'utf8'));
+    }
+    if (!s.skipDangerousModePermissionPrompt) {
+      s.skipDangerousModePermissionPrompt = true;
+      writeFileSync(userSettingsPath, JSON.stringify(s, null, 2) + '\n');
+      ok('  ~/.claude/settings.json: set skipDangerousModePermissionPrompt=true');
+    } else {
+      ok('  ~/.claude/settings.json: skipDangerousModePermissionPrompt already set');
+    }
+  } catch (e) {
+    warn(`  Could not update ~/.claude/settings.json: ${e.message}. First start may hit the dangerous-mode warning; press Enter to dismiss.`);
+  }
+
+  // 2. Per-project: hasTrustDialogAccepted + hasCompletedProjectOnboarding.
+  //    Lives in ~/.claude.json under .projects[<abs-path>].
+  const claudeJsonPath = join(homedir(), '.claude.json');
+  try {
+    let cfg = {};
+    if (existsSync(claudeJsonPath)) {
+      cfg = JSON.parse(readFileSync(claudeJsonPath, 'utf8'));
+    }
+    cfg.projects = cfg.projects || {};
+    cfg.projects[targetDir] = {
+      ...(cfg.projects[targetDir] || {}),
+      hasTrustDialogAccepted: true,
+      hasCompletedProjectOnboarding: true,
+    };
+    writeFileSync(claudeJsonPath, JSON.stringify(cfg, null, 2) + '\n');
+    ok(`  ~/.claude.json: trust + onboarding accepted for ${targetDir}`);
+  } catch (e) {
+    warn(`  Could not update ~/.claude.json: ${e.message}. First start may hit the trust-folder dialog; press Enter to dismiss.`);
+  }
+}
+
 // --- Multi-agent status reporter LaunchAgent ---
 //
 // One-per-machine: the FIRST hermit installed on a Mac wires this up and
@@ -524,7 +584,10 @@ async function main() {
   // 4. npm install for playwright
   npmInstall(answers.targetDir);
 
-  // 5. Install multi-agent status reporter LaunchAgent (idempotent, one per machine)
+  // 5. Pre-ack first-run dialogs so tmux startup doesn't hang on a blocked TUI
+  preAcknowledgeClaudeDialogs(answers.targetDir);
+
+  // 6. Install multi-agent status reporter LaunchAgent (idempotent, one per machine)
   installStatusReporter(answers.targetDir, answers.agentName);
 
   // 6. Final printout
