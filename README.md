@@ -20,7 +20,7 @@
 
 ## Why a hermit crab?
 
-Claude Code opens a third-party subscription surface — plugins, MCP servers, channels, hooks — letting outsiders plug into its runtime without forking it. Rather than build yet another standalone agent framework (another CLI, another runtime, another process manager), Hermit Agent takes the hermit-crab approach: **borrow the shell** (Claude Code's CLI, tools, and MCP plumbing), **bring your own body** (the markdown persona files, memory modules, skills, and hooks that make this particular agent *yours*).
+Claude doesn't expose a third-party subscription surface — no webhook, no event bus, no pub-sub channel to register as an outside listener. If you want an always-on agent that chats on Telegram, runs cron, browses the web, and remembers things across restarts, you have to run a Claude client yourself. Rather than build yet another standalone agent framework on top (another CLI, another runtime, another process manager), Hermit Agent takes the hermit-crab approach: lodge **inside** Claude Code — **borrow the shell** (Claude Code's CLI, tool harness, and the plugin / MCP / channel / hook extension points it opens up locally), **bring your own body** (the markdown persona files, memory modules, skills, and hooks that make this particular agent *yours*).
 
 The body itself fuses patterns from three earlier projects — nothing in this repo is a blank-slate invention.
 

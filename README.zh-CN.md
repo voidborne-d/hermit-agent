@@ -20,7 +20,7 @@
 
 ## 为什么是寄居蟹
 
-Claude Code 开放了第三方订阅接入面——plugin、MCP server、channel、hook——外部项目可以挂到它的运行时上，而不用 fork 它。Hermit Agent 没有走「另起炉灶做一个独立 agent 框架」的路（又一个 CLI、又一个运行时、又一个进程管理器），而是采取寄居蟹的思路：**借壳**（Claude Code 的 CLI、tool、MCP 基建），**带自己的身体**（那些真正把这个 agent 变成「你自己的 agent」的 markdown 人设文件、记忆模块、skills 和 hooks）。
+Claude 不开放第三方订阅接入面——没有 webhook，没有事件总线，没有给外部监听器注册的 pub-sub 通道。想做一个持续在线、能在 Telegram 上聊天、跑 cron、浏览网页、跨重启记事的 agent，你得自己跑一个 Claude 客户端。Hermit Agent 没有走「另起炉灶做一个独立 agent 框架」的路（又一个 CLI、又一个运行时、又一个进程管理器），而是采取寄居蟹的思路：寄居**在 Claude Code 内部**——**借壳**（Claude Code 的 CLI、tool 基建，以及它本地开放出来的 plugin / MCP / channel / hook 扩展点），**带自己的身体**（那些真正把这个 agent 变成「你自己的 agent」的 markdown 人设文件、记忆模块、skills 和 hooks）。
 
 身体本身融合了三个早期项目的经验——这个仓库里没有一行是凭空写的。
 
