@@ -4,73 +4,65 @@
 
 # Hermit Agent
 
-**A Telegram assistant that runs Claude Code on your Mac. Borrow the shell, bring your own body.**
+**A macOS-native Telegram assistant framework. One command bootstraps a Claude Code agent — persona, long-term memory, Telegram I/O, scheduler, browser automation.**
 
 [English](README.md) · [中文](README.zh-CN.md)
+
+[![npm](https://img.shields.io/npm/v/create-hermit-agent?style=flat-square)](https://www.npmjs.com/package/create-hermit-agent)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![Node 18+](https://img.shields.io/badge/node-18%2B-green?style=flat-square)](https://nodejs.org)
+[![macOS](https://img.shields.io/badge/platform-macOS-blue?style=flat-square)](https://www.apple.com/macos/)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-required-orange?style=flat-square)](https://docs.claude.com/claude-code)
 
 </div>
 
 ---
 
-## What is this?
+## Built on three pillars
 
-An AI assistant you **chat with on Telegram**, powered by **Claude Code running on your Mac**. It has a personality you can edit, remembers what you talk about between restarts, can browse the web, run scheduled tasks, and spin up more assistants when you need them.
+Hermit Agent fuses patterns from three projects. Nothing in this repo is a blank-slate invention.
 
-The pattern: an AI agent (the hermit crab) lives inside Claude Code (the borrowed shell). The files in its folder are its body — edit them and you edit the agent.
+| Borrowed from | What it contributed |
+|---|---|
+| **[Claude Code](https://docs.claude.com/claude-code)** | The runtime. Every agent literally runs inside `claude --dangerously-skip-permissions`. Plugins, MCP, tools, hooks — all native. |
+| **OpenClaw** | The self-managed-browser pattern. Shaped `scripts/chrome-launcher.sh`, `scripts/browser-lock.sh`, the per-agent Chrome profile + CDP reuse, and the stealth-wrapped Playwright harness. |
+| **Hermas Agent** | The autonomous-evolution pattern and memory-module design. `SOUL.md` + `MEMORY.md` + daily `memory/YYYY-MM-DD.md` logs + dream-style consolidation are all inherited from it. |
 
-## Install
+Claude Code provides the shell; Hermit provides the body.
 
-Prereqs (macOS):
+---
 
-- [Claude Code](https://docs.claude.com/claude-code), installed and logged in
-- Node 18+
-- `brew install tmux jq`
-- `curl -fsSL https://bun.sh/install | bash`
-
-One command:
+## 30-second quickstart
 
 ```bash
+# Prereqs: Claude Code installed & logged in, Node 18+, brew install tmux jq, bun installed
 npx create-hermit-agent
-```
-
-It asks you for a Telegram bot token (get one from [@BotFather](https://t.me/BotFather)) and your Telegram user ID (get it from [@userinfobot](https://t.me/userinfobot)). Then it scaffolds a folder called `asst/` in your current directory, sets up the plugin, and writes your token to a protected file.
-
-Start it:
-
-```bash
 cd asst && ./start.sh
 ```
 
-Now open Telegram, find the bot you created, and send it a message.
+Open Telegram, DM the bot you just registered with @BotFather. First DM triggers a one-shot orientation — then the agent stays out of your way.
 
-## First message: asst introduces itself
+> **You:** remind me at 3pm to call mom  
+> **asst:** scheduled — I'll ping you at 3pm today.
 
-Your default agent is called **asst**. The first time you DM it, asst sends you a short orientation: how to talk to it, what commands exist, how to spawn more agents. After that orientation, it deletes its own `FIRST_RUN.md` so it never greets you again.
+---
 
-From that point on, you just talk:
+## Feature matrix
 
-> You: remind me at 3pm to call mom  
-> asst: scheduled — I'll ping you at 3pm today.
+| Capability | Detail |
+|---|---|
+| **Persona** | `SOUL / IDENTITY / USER / AGENTS / TOOLS / MEMORY.md` loaded every session. Edit the files → edit the agent. |
+| **Long-term memory** | Daily logs at `memory/YYYY-MM-DD.md`, curated long-term at `MEMORY.md`. Survives restarts. |
+| **Telegram I/O** | Native reply / react / edit / attachment download via `@claude-plugins-official/telegram`. Group-chat etiquette built in. `!!` sigil routes messages to Claude Code commands (`!!compact`, `!!model`, `!!status`). |
+| **Lifecycle** | `start.sh` + `restart.sh` wrap the agent in a named `tmux` session. Push alerts when context crosses 100k / 200k / ... / 950k thresholds, or when tool use gets chatty. |
+| **Scheduler** | Three tiers — session-only `cron` skill, cross-restart `HEARTBEAT.md`, OS-durable `launchd` plists. |
+| **Browser** | Dedicated Chrome profile + CDP + Playwright + stealth-init anti-detection. |
+| **Multi-agent** | `provision-agent` skill spawns siblings at `../<name>/` with their own bot tokens. Optional 10-min digest LaunchAgent. |
+| **Safety** | Images forced through `safe-image.sh` resize (≤1800px long edge). Tokens stored at mode 600 outside the repo. Stop hook blocks turn-end if a Telegram DM got no reply. |
 
-## Creating more agents
+---
 
-Don't run `npx create-hermit-agent` a second time. Instead, tell **asst**:
-
-> "Create a new agent called `github-bot` with token `123:ABC…`. Purpose: triage my GitHub notifications."
-
-asst scaffolds a sibling agent at `../github-bot/`, installs its plugin, starts it in its own terminal session, and tells you the new bot's `@handle`. DM the new bot to wake it.
-
-Run as many as you want. They're independent — separate bot tokens, separate memory, separate folders.
-
-## What each agent can do
-
-- **Memory & personality.** Every session it reads `SOUL.md / IDENTITY.md / USER.md / AGENTS.md / TOOLS.md / MEMORY.md` to boot up its self. Writes daily logs to `memory/YYYY-MM-DD.md`. Restart and it still knows who it is.
-- **Telegram.** First-class reply, reactions, edits, attachment downloads. Group-chat etiquette built in. Prefix any message with `!!` to run a Claude Code command (`!!compact`, `!!model opus`, `!!status`). A guard hook refuses to end a turn if it got a DM but didn't reply.
-- **Lifecycle.** `./start.sh` starts the agent in a detached `tmux` pane. `./restart.sh` restarts without dropping Telegram. It pings you when context crosses 100k / 200k / ... / 950k tokens and when it's been running a lot of tools.
-- **Automation.** Built-in skills: `restart`, `cron`, `brave-search`, `browser-automation`, `provision-agent` (the "create more agents" one). Browser automation uses a dedicated Chrome profile with Playwright and stealth anti-detection.
-- **Safety.** Every image goes through a resize step before being read (a stray 4K screenshot otherwise kills the session). Tokens never touch the repo. Multi-agent status is an opt-in LaunchAgent — off by default.
-
-## How it works
+## Architecture
 
 ```
 ┌────────────── Your Mac ──────────────┐       ┌─ Telegram ─┐
@@ -87,116 +79,134 @@ Run as many as you want. They're independent — separate bot tokens, separate m
 │  └────────────────────────────────┘   │       │            │
 │                                       │       │            │
 │  ~/.claude/channels/telegram-asst/    │       │            │
-│    (bot token lives here, not repo)   │       │            │
+│    (bot token — not in the repo)       │       │            │
 └───────────────────────────────────────┘       └────────────┘
 ```
 
 Higher-res SVG: [assets/arch.svg](assets/arch.svg).
 
-## Customize your agent
+---
 
-Edit these files in your agent folder:
+## Install
 
-- **`IDENTITY.md`** — name, vibe, one-line purpose.
-- **`USER.md`** — who you are (pronouns, timezone, notes).
-- **`AGENTS.md`** — find the `<!-- MISSION-START -->` block, fill in what this agent is for.
-- **`TOOLS.md`** — find the `<!-- AGENT-SPECIFIC-START -->` block for API keys, repo links, domain notes.
+Prereqs (macOS):
 
-`SOUL.md` holds the agent's baseline disposition. Don't edit unless you want a different personality.
+- [Claude Code](https://docs.claude.com/claude-code) — installed and logged in (`claude login`)
+- Node ≥ 18
+- `brew install tmux jq`
+- `curl -fsSL https://bun.sh/install | bash`
+
+Scaffold:
+
+```bash
+npx create-hermit-agent
+```
+
+The CLI asks for a Telegram bot token ([@BotFather](https://t.me/BotFather)) and your own Telegram user ID ([@userinfobot](https://t.me/userinfobot)). Then it creates `./asst/`, installs the Telegram plugin at project scope, and writes the token to `~/.claude/channels/telegram-asst/.env` (mode 600).
+
+Start:
+
+```bash
+cd asst && ./start.sh
+```
+
+The agent now runs in a detached `tmux` session named `claude-asst`. DM the bot.
+
+---
+
+## First DM: asst introduces itself
+
+On first contact, asst sends a one-shot orientation — how to talk to it, available `!!` commands, how to spawn more agents — then deletes its own `FIRST_RUN.md` so it never greets you again.
+
+---
+
+## Spawning more agents
+
+**Don't run `npx create-hermit-agent` a second time.** Tell asst:
+
+> Create a new agent called `github-bot` with token `123:ABC...`. Purpose: triage my GitHub notifications.
+
+asst's `provision-agent` skill scaffolds a sibling at `../github-bot/`, installs its plugin, starts it in a `claude-github-bot` tmux session, and replies with the new bot's `@handle`.
+
+Agents are fully independent: separate bot tokens, separate memory, separate folders.
+
+---
+
+## Customize
+
+Edit these in the agent folder:
+
+| File | What to put there |
+|---|---|
+| `IDENTITY.md` | Name, vibe, one-line purpose |
+| `USER.md` | You — pronouns, timezone, notes |
+| `AGENTS.md` | `<!-- MISSION-START -->` block — this agent's mission |
+| `TOOLS.md` | `<!-- AGENT-SPECIFIC-START -->` block — API keys, repo links, domain notes |
+
+`SOUL.md` is baseline disposition — don't edit unless you want a different personality.
+
+---
 
 ## Scheduled tasks
 
-Three ways to run periodic work, picked by how long it must survive:
+Just tell the agent what you want:
 
-| Option | Survives restart? | Use for |
-|---|---|---|
-| `cron` skill (`CronCreate`) | ❌ session-only | one-shot reminders, probes |
-| `HEARTBEAT.md` | ✅ next wake | lazy checks that need the agent to think |
-| LaunchAgent plist / `crontab` | ✅ OS-level | monitoring, must-not-miss work |
+> Every 30 minutes, scan `memory/today.md` and flag urgent items.
 
-### Session-only: the `cron` skill
+asst's `cron` skill handles it. For tasks that must survive restarts, drop a plist into `~/Library/LaunchAgents/` — see `launchd/cron-example.plist.tmpl`.
 
-Just tell the agent:
-
-> "Every 30 minutes, glance at `memory/today.md` and flag anything urgent."
-
-It creates a `CronCreate` task that reads your persona files, runs the check, logs to today's memory, and replies via Telegram. The task dies when the agent restarts.
-
-### HEARTBEAT.md
-
-If you want checks that survive restarts AND use Claude's reasoning, wire a LaunchAgent that injects `"Heartbeat check."` into the agent's tmux pane every N minutes. On each heartbeat the agent reads `HEARTBEAT.md` and acts. What-to-do in markdown, when-to-fire in OS.
-
-### LaunchAgent plist (durable)
-
-macOS's `crontab -e` can hang silently on a Full Disk Access prompt. Use a LaunchAgent instead. The template ships an example at `launchd/cron-example.plist.tmpl`:
-
-```bash
-AGENT=$(basename "$PWD")
-cp launchd/cron-example.plist.tmpl \
-   ~/Library/LaunchAgents/com.hermit-agent.${AGENT}.<TASK>.plist
-# Edit Label, ProgramArguments, StartInterval.
-launchctl load ~/Library/LaunchAgents/com.hermit-agent.${AGENT}.<TASK>.plist
-```
-
-Verify: `launchctl list | grep hermit-agent`. Unload: `launchctl unload <path>`.
-
-### Ping Telegram from a cron task
-
-```bash
-token=$(jq -r '.env.TELEGRAM_BOT_TOKEN' .claude/settings.local.json)
-chat_id=$(jq -r '.env.TELEGRAM_CHAT_ID' .claude/settings.local.json)
-curl -sS -X POST "https://api.telegram.org/bot${token}/sendMessage" \
-  -d "chat_id=${chat_id}" --data-urlencode "text=task fired"
-```
-
-`scripts/multi-agent-status-report.sh` is a working example.
+---
 
 ## Optional: multi-agent status digest
 
-If you're running several agents, have asst push a digest of their states (🟢 idle · 🟨 running · 🟥 stuck · ⚫ down) to you every 10 minutes:
+Running several agents? Have asst push a digest (🟢 idle · 🟨 running · 🟥 stuck · ⚫ down) every 10 minutes:
 
 ```bash
-cp launchd/status-reporter.plist.tmpl \
-   ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist
+cp launchd/status-reporter.plist.tmpl ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist
 launchctl load ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist
 ```
 
-Install on one agent per machine — asst is the natural choice.
+Install on one agent per machine — asst is the natural coordinator.
+
+---
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| Agent doesn't reply | `tmux attach -t claude-<name>` to see what's happening. Also check `restart.log` and `claude-agent.log`. |
-| Plugin subprocess missing | `./restart.sh` retries once. If still broken, check `~/.claude/channels/telegram-<name>/.env` is mode 600 and contains the token. |
-| "exceeds the dimension limit" (image crash) | Every image Read must go through `scripts/safe-image.sh` first. Restart + `/compact` to recover. |
-| `claude plugin install failed` | Make sure `claude` is on PATH and you're logged in (`claude login`). |
-| Context bloat | Telegram: `!!compact`. Or `/compact` in the tmux pane. |
+| Agent doesn't reply | `tmux attach -t claude-<name>` to see live state. Also check `restart.log`, `claude-agent.log`. |
+| Plugin subprocess missing | `./restart.sh` auto-retries once. Still broken? Check `~/.claude/channels/telegram-<name>/.env` is mode 600 with the token. |
+| `exceeds the dimension limit` image crash | All image Reads MUST go through `scripts/safe-image.sh` first. Recover with restart + `/compact`. |
+| `claude plugin install failed` | Ensure `claude` is on PATH and logged in (`claude login`). |
+| Context bloat | Send `!!compact` from Telegram, or `/compact` directly in the tmux pane. |
+
+---
 
 ## FAQ
 
-**Do I need to pre-install the telegram plugin in Claude Code?**  
-No. `create-hermit-agent` runs `claude plugin install -s project` for every new agent. First install downloads the plugin into the shared cache at `~/.claude/plugins/cache/`; subsequent agents reference that cache per-project. Zero plugin setup on your end.
+**Do I need to pre-install the Telegram plugin in Claude Code?**  
+No. `create-hermit-agent` runs `claude plugin install telegram@claude-plugins-official -s project` for every new agent. First install downloads to `~/.claude/plugins/cache/`; subsequent agents register against the cache per-project. Zero manual plugin setup.
 
-**Does it work on Linux or Windows?**  
-Currently macOS only — `launchctl`, `sips`, `tmux` are all macOS-shaped. Linux/Windows support is a welcome contribution.
+**Linux / Windows support?**  
+macOS only. `launchctl`, `sips`, `tmux` are all macOS-shaped. PRs welcome.
 
-**Can I run multiple agents with the same bot token?**  
-No. Telegram's Bot API gives each bot's updates to exactly one listener. A shared token means one agent hijacks the other's messages. Each agent needs its own `@BotFather`-issued token.
+**Can multiple agents share a bot token?**  
+No. Telegram's Bot API routes each bot's updates to exactly one listener. Sharing causes message hijacking. Each agent needs its own `@BotFather`-issued token.
 
-**Where's my bot token stored?**  
-In `~/.claude/channels/telegram-<name>/.env` (mode 600, outside the project). It's also echoed into `.claude/settings.local.json`, which is gitignored.
+**Where's the bot token stored?**  
+`~/.claude/channels/telegram-<name>/.env` (mode 600, outside the project). Also echoed into `.claude/settings.local.json` (gitignored).
 
-**Can I delete an agent cleanly?**  
-Yes: `tmux kill-session -t claude-<name>`, then `rm -rf <agent-folder>` and `rm -rf ~/.claude/channels/telegram-<name>`. Also revoke the bot via `@BotFather` if you're done with it.
+**How do I delete an agent cleanly?**
 
-## Credits
+```bash
+tmux kill-session -t claude-<name>
+rm -rf <agent-folder>
+rm -rf ~/.claude/channels/telegram-<name>
+```
 
-Hermit Agent draws from three projects:
+Also revoke the bot via `@BotFather` if you're done with it.
 
-- **[Claude Code](https://docs.claude.com/claude-code)** — the CLI that hosts each agent. This project is literally a hermit crab on top of it.
-- **OpenClaw** — the self-managed-browser / Chrome-profile pattern behind `chrome-launcher.sh` and `browser-lock.sh`.
-- **Hermas agent** — earlier personal-assistant prototype. Hermit inherited its autonomous-evolution pattern and memory-module design.
+---
 
 ## License
 
