@@ -45,8 +45,8 @@ fi
 sleep 2
 
 start_pane() {
-  if tmux has-session -t "$SESSION" 2>/dev/null; then
-    tmux respawn-pane -t "$SESSION" -k "$CMD"
+  if tmux has-session -t "=$SESSION" 2>/dev/null; then
+    tmux respawn-pane -t "=$SESSION:" -k "$CMD"
     echo "[$(date)] Respawned pane in existing session" >> "$LOG"
   else
     tmux new-session -d -s "$SESSION" -x 200 -y 50 "$CMD"
@@ -56,7 +56,7 @@ start_pane() {
 
 resolve_pid() {
   local pane_pid
-  pane_pid=$(tmux display -p -t "$SESSION" '#{pane_pid}' 2>/dev/null)
+  pane_pid=$(tmux display -p -t "=$SESSION:" '#{pane_pid}' 2>/dev/null)
   [ -z "$pane_pid" ] && return 1
   # Preferred: pane_pid IS claude (respawn-pane exec's the command directly, no shell wrapper).
   if ps -p "$pane_pid" -o command= 2>/dev/null | grep -q "$(basename "$CLAUDE_BIN")"; then
