@@ -20,15 +20,13 @@
 
 ## Why a hermit crab?
 
-Claude doesn't expose a third-party subscription surface — no webhook, no event bus, no pub-sub channel to register as an outside listener. If you want an always-on agent that chats on Telegram, runs cron, browses the web, and remembers things across restarts, you have to run a Claude client yourself. Rather than build yet another standalone agent framework on top (another CLI, another runtime, another process manager), Hermit Agent takes the hermit-crab approach: lodge **inside** Claude Code — **borrow the shell** (Claude Code's CLI, tool harness, and the plugin / MCP / channel / hook extension points it opens up locally), **bring your own body** (the markdown persona files, memory modules, skills, and hooks that make this particular agent *yours*).
-
-The body itself fuses patterns from three earlier projects — nothing in this repo is a blank-slate invention.
+Claude Code closes its third-party subscription surface, so I built an agent that **lodges inside Claude Code itself** — fusing the best ideas from three agent-harness frameworks.
 
 | Borrowed from | What it contributed |
 |---|---|
 | **[Claude Code](https://docs.claude.com/claude-code)** | The shell. Every agent literally runs inside `claude --dangerously-skip-permissions`. Plugins, MCP, tools, hooks — all native, nothing reimplemented. |
-| **OpenClaw** | The self-managed-browser pattern. Shaped `scripts/chrome-launcher.sh`, `scripts/browser-lock.sh`, per-agent Chrome profile + CDP reuse, stealth-wrapped Playwright. |
-| **Hermas Agent** | The autonomous-evolution pattern and memory-module design. `SOUL.md` + `MEMORY.md` + daily `memory/YYYY-MM-DD.md` logs + dream-style consolidation are all inherited. |
+| **OpenClaw** | Self-managed-browser pattern. Shaped `scripts/chrome-launcher.sh`, `scripts/browser-lock.sh`, per-agent Chrome profile + CDP reuse, stealth-wrapped Playwright. |
+| **Hermas Agent** | Autonomous-evolution pattern and memory-module design. `SOUL.md` + `MEMORY.md` + daily `memory/YYYY-MM-DD.md` logs + dream-style consolidation all inherited. |
 
 ---
 
