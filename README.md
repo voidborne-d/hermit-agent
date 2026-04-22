@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.svg" width="200" alt="Hermit Agent logo"/>
+<img src="assets/logo.png" width="200" alt="Hermit Agent logo"/>
 
 # Hermit Agent
 
