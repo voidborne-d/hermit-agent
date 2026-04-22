@@ -100,6 +100,15 @@ const checks = [
     readFileSync(join(TARGET, 'launchd/cron-example.plist'), 'utf8').includes(TARGET)],
   ['AGENTS.md has FIRST_RUN orientation rule',
     readFileSync(join(TARGET, 'AGENTS.md'), 'utf8').includes('If `FIRST_RUN.md` exists')],
+  ['hook-tg-strip-markdown.sh exists and is executable',
+    (() => { try { return (statSync(join(TARGET, 'scripts/hook-tg-strip-markdown.sh')).mode & 0o111) !== 0; } catch { return false; } })()],
+  ['settings.local.json wires markdown-strip hook for telegram reply+edit',
+    (() => {
+      const s = JSON.parse(readFileSync(join(TARGET, '.claude/settings.local.json'), 'utf8'));
+      const pre = s.hooks?.PreToolUse || [];
+      const match = pre.find(e => e.matcher && e.matcher.includes('mcp__plugin_telegram_telegram__reply') && e.matcher.includes('mcp__plugin_telegram_telegram__edit_message'));
+      return !!match && match.hooks?.some(h => h.command?.includes('hook-tg-strip-markdown.sh'));
+    })()],
 ];
 
 let pass = 0, fail = 0;

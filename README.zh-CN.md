@@ -58,7 +58,7 @@ cd asst && ./start.sh
 | **定时任务** | 三层——session-only 的 `cron` skill、跨重启的 `HEARTBEAT.md`、OS 持久的 `launchd` plist。 |
 | **浏览器** | 独立 Chrome profile + CDP + Playwright + stealth-init 反检测。 |
 | **多 Agent** | `provision-agent` skill 在 `../<name>/` 生成 sibling 并给它独立 bot token。可选每 10 分钟状态 digest 的 LaunchAgent。 |
-| **安全** | 图片 Read 前强制过 `safe-image.sh` 缩图（长边 ≤ 1800px）。Token 存在 mode 600 的 repo 外文件。Stop hook 阻止“收到 DM 没回就结束 turn”。 |
+| **安全** | 图片 Read 前强制过 `safe-image.sh` 缩图（长边 ≤ 1800px）。Token 存在 mode 600 的 repo 外文件。Stop hook 阻止“收到 DM 没回就结束 turn”。PreToolUse hook 把 agent 出站 Telegram reply 里的 markdown 语法洗掉，避免 `**粗体**` / `# 标题` 直接作为字面量字符到用户对话框里。 |
 
 ---
 

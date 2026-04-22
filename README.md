@@ -58,7 +58,7 @@ Open Telegram, DM the bot you just registered with @BotFather. First DM triggers
 | **Scheduler** | Three tiers — session-only `cron` skill, cross-restart `HEARTBEAT.md`, OS-durable `launchd` plists. |
 | **Browser** | Dedicated Chrome profile + CDP + Playwright + stealth-init anti-detection. |
 | **Multi-agent** | `provision-agent` skill spawns siblings at `../<name>/` with their own bot tokens. Optional 10-min digest LaunchAgent. |
-| **Safety** | Images forced through `safe-image.sh` resize (≤1800px long edge). Tokens stored at mode 600 outside the repo. Stop hook blocks turn-end if a Telegram DM got no reply. |
+| **Safety** | Images forced through `safe-image.sh` resize (≤1800px long edge). Tokens stored at mode 600 outside the repo. Stop hook blocks turn-end if a Telegram DM got no reply. PreToolUse hook strips markdown from outbound Telegram replies so stray `**bold**` / `# headers` don't land as literal noise in the chat. |
 
 ---
 

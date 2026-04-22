@@ -42,6 +42,15 @@
             "command": "{{AGENT_DIR}}/scripts/hook-session-state.sh"
           }
         ]
+      },
+      {
+        "matcher": "mcp__plugin_telegram_telegram__reply|mcp__plugin_telegram_telegram__edit_message",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{AGENT_DIR}}/scripts/hook-tg-strip-markdown.sh"
+          }
+        ]
       }
     ]
   }

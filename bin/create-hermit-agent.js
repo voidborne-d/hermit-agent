@@ -390,6 +390,7 @@ function chmodScripts(targetDir) {
     'scripts/hook-session-state.sh',
     'scripts/hook-tool-activity.sh',
     'scripts/hook-context-report.sh',
+    'scripts/hook-tg-strip-markdown.sh',
     'scripts/multi-agent-status-report.sh',
     'scripts/chrome-launcher.sh',
     'scripts/browser-lock.sh',
