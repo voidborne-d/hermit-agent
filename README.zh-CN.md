@@ -157,16 +157,14 @@ asst 的 `cron` skill 会处理。需要跨重启的任务，丢个 plist 进 `~
 
 ---
 
-## 可选：多 agent 状态汇报
+## 多 agent 状态汇报
 
-跑多个 agent？让 asst 每 10 分钟 push 一次状态 digest（🟢 idle · 🟨 running · 🟥 stuck · ⚫ down）：
+CLI 在这台 Mac 上首次运行时会自动装一个 `launchd` coordinator。每 10 分钟 push 一次本机所有 hermit 的状态 digest 到 coordinator 的 Telegram：🟢 idle · 🟨 running · 🟥 stuck · ⚫ down。
 
-```bash
-cp launchd/status-reporter.plist.tmpl ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist
-launchctl load ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist
-```
-
-每台 Mac 只在一个 agent 上装——asst 是默认选择。
+- 每台 Mac 只有一个 coordinator。`create-hermit-agent` 发现已存在 `com.hermit-agent.*.status-reporter.plist` 就跳过，后续 hermit 不会各自再装一份。
+- 第一个装的 agent（默认 `asst`）就是 coordinator。它的 plist 在 `~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist`。
+- 想关：`launchctl unload ~/Library/LaunchAgents/com.hermit-agent.<coordinator>.status-reporter.plist`。
+- 想换 coordinator：先 unload 老 plist 再 rm，然后从新 agent 再跑一次 `create-hermit-agent`（或手动 `cp launchd/status-reporter.plist ~/Library/LaunchAgents/com.hermit-agent.<new>.status-reporter.plist && launchctl load ...`）。
 
 ---
 

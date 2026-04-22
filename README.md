@@ -157,16 +157,14 @@ asst's `cron` skill handles it. For tasks that must survive restarts, drop a pli
 
 ---
 
-## Optional: multi-agent status digest
+## Multi-agent status digest
 
-Running several agents? Have asst push a digest (🟢 idle · 🟨 running · 🟥 stuck · ⚫ down) every 10 minutes:
+The CLI automatically installs a `launchd` coordinator the first time you run it on a machine. Every 10 minutes it pushes a digest of all hermits on the box to the coordinator's Telegram chat: 🟢 idle · 🟨 running · 🟥 stuck · ⚫ down.
 
-```bash
-cp launchd/status-reporter.plist.tmpl ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist
-launchctl load ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist
-```
-
-Install on one agent per machine — asst is the natural coordinator.
+- One coordinator per machine. When `create-hermit-agent` detects an existing `com.hermit-agent.*.status-reporter.plist`, it skips — subsequent hermits don't stack their own jobs.
+- The first agent you install (default `asst`) is the coordinator. Its plist lives at `~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plist`.
+- To disable: `launchctl unload ~/Library/LaunchAgents/com.hermit-agent.<coordinator>.status-reporter.plist`.
+- To hand off to a different coordinator: unload the old plist, delete it, re-run `create-hermit-agent` from a new agent (or manually `cp launchd/status-reporter.plist ~/Library/LaunchAgents/com.hermit-agent.<new>.status-reporter.plist && launchctl load ...`).
 
 ---
 

@@ -379,6 +379,63 @@ function npmInstall(targetDir) {
   }
 }
 
+// --- Multi-agent status reporter LaunchAgent ---
+//
+// One-per-machine: the FIRST hermit installed on a Mac wires this up and
+// becomes the status coordinator (pushes a 🟢/🟨/🟥/⚫ digest every 10 min).
+// Subsequent hermits detect the existing plist and skip — otherwise every
+// agent would fire its own digest and flood Telegram.
+
+function installStatusReporter(targetDir, agentName) {
+  step('Installing multi-agent status reporter LaunchAgent…');
+
+  const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents');
+  mkdirSync(launchAgentsDir, { recursive: true });
+
+  // Detect an existing hermit-agent status reporter (installed by a sibling).
+  let existing = [];
+  try {
+    existing = readdirSync(launchAgentsDir)
+      .filter((f) => /^com\.hermit-agent\..+\.status-reporter\.plist$/.test(f));
+  } catch {
+    existing = [];
+  }
+  if (existing.length > 0) {
+    ok(`Status reporter already installed by a sibling (${existing[0]}). Skipping — only one coordinator per machine.`);
+    return;
+  }
+
+  const srcPlist = join(targetDir, 'launchd', 'status-reporter.plist');
+  if (!existsSync(srcPlist)) {
+    warn(`launchd/status-reporter.plist missing from scaffold — skipping LaunchAgent install.`);
+    return;
+  }
+
+  // The coordinator writes a log; make sure its parent dir exists so launchd
+  // doesn't error on first fire.
+  try { mkdirSync(join(targetDir, '.claude', 'state'), { recursive: true }); } catch {}
+
+  const destPlist = join(launchAgentsDir, `com.hermit-agent.${agentName}.status-reporter.plist`);
+  try {
+    writeFileSync(destPlist, readFileSync(srcPlist));
+    chmodSync(destPlist, 0o644);
+  } catch (e) {
+    warn(`Could not copy plist to ${destPlist}: ${e.message}\n  Install manually later: cp ${srcPlist} ${destPlist} && launchctl load ${destPlist}`);
+    return;
+  }
+
+  const r = spawnSync('launchctl', ['load', destPlist], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+  });
+  if (r.status !== 0) {
+    warn(`launchctl load exited ${r.status}. Output: ${(r.stderr || r.stdout || '').trim()}`);
+    warn(`You can retry manually: launchctl load ${destPlist}`);
+    return;
+  }
+  ok(`Status reporter loaded — ${agentName} is this machine's coordinator (cadence: 10 min).`);
+}
+
 // --- Make all .sh executable ---
 
 function chmodScripts(targetDir) {
@@ -467,7 +524,10 @@ async function main() {
   // 4. npm install for playwright
   npmInstall(answers.targetDir);
 
-  // 5. Final printout
+  // 5. Install multi-agent status reporter LaunchAgent (idempotent, one per machine)
+  installStatusReporter(answers.targetDir, answers.agentName);
+
+  // 6. Final printout
   const tmuxSession = `claude-${answers.agentName}`;
   console.log('');
   console.log(green(bold('✓ Agent ready.')));
@@ -481,10 +541,6 @@ async function main() {
   console.log('');
   console.log(`  3. Attach to the session to watch:`);
   console.log(`       tmux attach -t ${tmuxSession}    ${dim('(detach: Ctrl-b d)')}`);
-  console.log('');
-  console.log(dim(`Multi-agent status digest (optional, runs on asst only) is off by default. To enable:`));
-  console.log(dim(`  cp ${join(answers.targetDir, 'launchd/status-reporter.plist.tmpl')} ~/Library/LaunchAgents/com.hermit-agent.${answers.agentName}.status-reporter.plist`));
-  console.log(dim(`  launchctl load ~/Library/LaunchAgents/com.hermit-agent.${answers.agentName}.status-reporter.plist`));
   console.log('');
 }
 
