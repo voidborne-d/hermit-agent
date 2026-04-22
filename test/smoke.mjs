@@ -91,6 +91,10 @@ const checks = [
     !readFileSync(join(TARGET, 'TOOLS.md'), 'utf8').includes('{{')],
   ['skills/provision-agent/SKILL.md present',
     existsSync(join(TARGET, '.claude/skills/provision-agent/SKILL.md'))],
+  ['skills/add-telegram-user/SKILL.md present',
+    existsSync(join(TARGET, '.claude/skills/add-telegram-user/SKILL.md'))],
+  ['add-telegram-user frontmatter has owner-only description',
+    readFileSync(join(TARGET, '.claude/skills/add-telegram-user/SKILL.md'), 'utf8').includes('Owner-only')],
   ['FIRST_RUN.md present with substituted AGENT_DIR',
     existsSync(join(TARGET, 'FIRST_RUN.md')) &&
     readFileSync(join(TARGET, 'FIRST_RUN.md'), 'utf8').includes(TARGET)],
