@@ -4,7 +4,7 @@
 
 # Hermit Agent · 寄居蟹 Agent
 
-**macOS 原生的 Telegram 助手框架。一条命令开箱 Claude Code agent——自带人设、长期记忆、Telegram I/O、定时任务、浏览器自动化。**
+**不是一个独立的 agent 框架，而是寄居在 Claude Code 上的一只寄居蟹。一条命令开箱一个 Telegram 连接的 Claude Code agent，自带人设、长期记忆、定时任务、浏览器自动化。**
 
 [English](README.md) · [中文](README.zh-CN.md)
 
@@ -18,17 +18,17 @@
 
 ---
 
-## 三大基础
+## 为什么是寄居蟹
 
-Hermit Agent 融合了三个项目的经验，仓库里没有一行是凭空写的。
+Claude Code 开放了第三方订阅接入面——plugin、MCP server、channel、hook——外部项目可以挂到它的运行时上，而不用 fork 它。Hermit Agent 没有走「另起炉灶做一个独立 agent 框架」的路（又一个 CLI、又一个运行时、又一个进程管理器），而是采取寄居蟹的思路：**借壳**（Claude Code 的 CLI、tool、MCP 基建），**带自己的身体**（那些真正把这个 agent 变成「你自己的 agent」的 markdown 人设文件、记忆模块、skills 和 hooks）。
+
+身体本身融合了三个早期项目的经验——这个仓库里没有一行是凭空写的。
 
 | 借鉴自 | 带来了什么 |
 |---|---|
-| **[Claude Code](https://docs.claude.com/claude-code)** | 运行时。每个 agent 字面意义上就跑在 `claude --dangerously-skip-permissions` 里。Plugin、MCP、Tool、Hook 全部原生。 |
+| **[Claude Code](https://docs.claude.com/claude-code)** | 壳本体。每个 agent 字面意义上就跑在 `claude --dangerously-skip-permissions` 里。Plugin、MCP、Tool、Hook 全部原生复用，什么都不重实现。 |
 | **OpenClaw** | 自管浏览器模式。塑形了 `scripts/chrome-launcher.sh`、`scripts/browser-lock.sh`，每个 agent 一个独立 Chrome profile 配 CDP 复用，外加 stealth 包装的 Playwright 套路。 |
 | **Hermas Agent** | 自主进化模式和记忆模块设计。`SOUL.md` + `MEMORY.md` + 每日 `memory/YYYY-MM-DD.md` 日志 + 做梦式知识固化，全都继承自它。 |
-
-Claude Code 提供壳，Hermit 提供身体。
 
 ---
 

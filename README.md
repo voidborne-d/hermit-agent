@@ -4,7 +4,7 @@
 
 # Hermit Agent
 
-**A macOS-native Telegram assistant framework. One command bootstraps a Claude Code agent — persona, long-term memory, Telegram I/O, scheduler, browser automation.**
+**Not a standalone agent framework — a hermit crab that lodges inside Claude Code. One command bootstraps a Telegram-connected Claude Code agent with persona, long-term memory, scheduler, and browser automation.**
 
 [English](README.md) · [中文](README.zh-CN.md)
 
@@ -18,17 +18,17 @@
 
 ---
 
-## Built on three pillars
+## Why a hermit crab?
 
-Hermit Agent fuses patterns from three projects. Nothing in this repo is a blank-slate invention.
+Claude Code opens a third-party subscription surface — plugins, MCP servers, channels, hooks — letting outsiders plug into its runtime without forking it. Rather than build yet another standalone agent framework (another CLI, another runtime, another process manager), Hermit Agent takes the hermit-crab approach: **borrow the shell** (Claude Code's CLI, tools, and MCP plumbing), **bring your own body** (the markdown persona files, memory modules, skills, and hooks that make this particular agent *yours*).
+
+The body itself fuses patterns from three earlier projects — nothing in this repo is a blank-slate invention.
 
 | Borrowed from | What it contributed |
 |---|---|
-| **[Claude Code](https://docs.claude.com/claude-code)** | The runtime. Every agent literally runs inside `claude --dangerously-skip-permissions`. Plugins, MCP, tools, hooks — all native. |
-| **OpenClaw** | The self-managed-browser pattern. Shaped `scripts/chrome-launcher.sh`, `scripts/browser-lock.sh`, the per-agent Chrome profile + CDP reuse, and the stealth-wrapped Playwright harness. |
-| **Hermas Agent** | The autonomous-evolution pattern and memory-module design. `SOUL.md` + `MEMORY.md` + daily `memory/YYYY-MM-DD.md` logs + dream-style consolidation are all inherited from it. |
-
-Claude Code provides the shell; Hermit provides the body.
+| **[Claude Code](https://docs.claude.com/claude-code)** | The shell. Every agent literally runs inside `claude --dangerously-skip-permissions`. Plugins, MCP, tools, hooks — all native, nothing reimplemented. |
+| **OpenClaw** | The self-managed-browser pattern. Shaped `scripts/chrome-launcher.sh`, `scripts/browser-lock.sh`, per-agent Chrome profile + CDP reuse, stealth-wrapped Playwright. |
+| **Hermas Agent** | The autonomous-evolution pattern and memory-module design. `SOUL.md` + `MEMORY.md` + daily `memory/YYYY-MM-DD.md` logs + dream-style consolidation are all inherited. |
 
 ---
 
