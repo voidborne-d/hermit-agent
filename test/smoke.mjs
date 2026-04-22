@@ -106,6 +106,13 @@ const checks = [
     readFileSync(join(TARGET, 'AGENTS.md'), 'utf8').includes('If `FIRST_RUN.md` exists')],
   ['hook-tg-strip-markdown.sh exists and is executable',
     (() => { try { return (statSync(join(TARGET, 'scripts/hook-tg-strip-markdown.sh')).mode & 0o111) !== 0; } catch { return false; } })()],
+  ['launchd-sync.sh exists and is executable',
+    (() => { try { return (statSync(join(TARGET, 'scripts/launchd-sync.sh')).mode & 0o111) !== 0; } catch { return false; } })()],
+  ['launchd-sync.sh takes agent-dir arg and has LOADED/RELOAD verbs',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/launchd-sync.sh'), 'utf8');
+      return s.includes('Usage:') && s.includes('LOADED') && s.includes('RELOAD') && s.includes('launchctl load');
+    })()],
   ['settings.local.json wires markdown-strip hook for telegram reply+edit',
     (() => {
       const s = JSON.parse(readFileSync(join(TARGET, '.claude/settings.local.json'), 'utf8'));

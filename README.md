@@ -151,7 +151,13 @@ Just tell the agent what you want:
 
 > Every 30 minutes, scan `memory/today.md` and flag urgent items.
 
-asst's `cron` skill handles it. For tasks that must survive restarts, drop a plist into `~/Library/LaunchAgents/` — see `launchd/cron-example.plist.tmpl`.
+asst's `cron` skill handles it. Tasks that must survive restarts go through `launchd`:
+
+1. Drop a plist into your agent's `launchd/` folder — copy `launchd/cron-example.plist.tmpl`, set `Label` to `com.hermit-agent.<agent>.cron-<task>`, and point `ProgramArguments` at whatever you want run.
+2. Sync to the live LaunchAgents dir: `./scripts/launchd-sync.sh .` (idempotent: `LOADED` new, `RELOAD` changed, skip unchanged; `--dry-run` to preview).
+3. Confirm: `launchctl list | grep com.hermit-agent.<agent>`.
+
+Writing the plist alone does NOT activate it — `launchd-sync.sh` is the difference between "generated" and "running". Re-run it any time you add, edit, or rename a plist.
 
 ---
 

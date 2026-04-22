@@ -151,7 +151,13 @@ Agent 之间完全独立：独立 bot token、独立记忆、独立目录。
 
 > 每 30 分钟扫一下 `memory/today.md`，标记 urgent 的条目。
 
-asst 的 `cron` skill 会处理。需要跨重启的任务，丢个 plist 进 `~/Library/LaunchAgents/`——参考 `launchd/cron-example.plist.tmpl`。
+asst 的 `cron` skill 会处理。跨重启的任务走 `launchd`：
+
+1. 在 agent 的 `launchd/` 目录放一份 plist——复制 `launchd/cron-example.plist.tmpl`，`Label` 改成 `com.hermit-agent.<agent>.cron-<task>`，`ProgramArguments` 指向你要跑的命令。
+2. 同步到生效目录：`./scripts/launchd-sync.sh .`（幂等：新的 `LOADED`，改过的 `RELOAD`，一致的 skip；加 `--dry-run` 预览）。
+3. 验证：`launchctl list | grep com.hermit-agent.<agent>`。
+
+光写 plist 不会生效——`launchd-sync.sh` 才是"生成"和"运行"之间的那一步。每次加、改、改名 plist 都要再跑一次。
 
 ---
 
