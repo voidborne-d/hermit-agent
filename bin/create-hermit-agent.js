@@ -337,13 +337,31 @@ function installTelegramPlugin(claudeBin, targetDir) {
 
 // --- State dir + .env ---
 
-function writeStateDir(stateDir, botToken) {
+function writeStateDir(stateDir, botToken, userId) {
   step(`Writing state dir: ${stateDir}`);
   mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+
   const envPath = join(stateDir, '.env');
   writeFileSync(envPath, `TELEGRAM_BOT_TOKEN=${botToken}\n`, { mode: 0o600 });
   chmodSync(envPath, 0o600);
   ok(`.env written at ${envPath} (mode 600)`);
+
+  // Pre-populate access.json so the user's own DMs are allowed from message 1.
+  // Without this, the plugin defaults to pairing mode and the first DM replies
+  // with a 6-char code that the user would have to approve inside the claude
+  // REPL with /telegram:access pair <code> — painful first-run UX.
+  // dmPolicy stays "pairing" so strangers who find the bot's @handle still get
+  // the pairing flow rather than silent delivery.
+  const accessPath = join(stateDir, 'access.json');
+  const access = {
+    dmPolicy: 'pairing',
+    allowFrom: [String(userId)],
+    groups: {},
+    pending: {},
+  };
+  writeFileSync(accessPath, JSON.stringify(access, null, 2) + '\n', { mode: 0o600 });
+  chmodSync(accessPath, 0o600);
+  ok(`access.json written (user ${userId} pre-allowed, no pairing step needed)`);
 }
 
 // --- npm install for playwright ---
@@ -439,8 +457,8 @@ async function main() {
   chmodScripts(answers.targetDir);
   ok(`Template copied to ${answers.targetDir}`);
 
-  // 2. Write state dir + .env
-  writeStateDir(answers.stateDir, answers.botToken);
+  // 2. Write state dir (.env + access.json)
+  writeStateDir(answers.stateDir, answers.botToken, answers.userTgId);
 
   // 3. Install telegram plugin at project scope
   installTelegramPlugin(prereqs.claude, answers.targetDir);

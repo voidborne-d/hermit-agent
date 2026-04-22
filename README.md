@@ -196,6 +196,9 @@ No. Telegram's Bot API routes each bot's updates to exactly one listener. Sharin
 **Where's the bot token stored?**  
 `~/.claude/channels/telegram-<name>/.env` (mode 600, outside the project). Also echoed into `.claude/settings.local.json` (gitignored).
 
+**Does the first DM trigger a pairing code?**  
+No. The CLI pre-populates `~/.claude/channels/telegram-<name>/access.json` with your user ID pre-allowlisted, so your own DMs pass through from message one. Strangers who find the bot's `@handle` still get the standard pairing challenge (`dmPolicy: "pairing"`), not silent delivery.
+
 **How do I delete an agent cleanly?**
 
 ```bash

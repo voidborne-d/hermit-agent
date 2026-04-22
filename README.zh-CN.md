@@ -196,6 +196,9 @@ launchctl load ~/Library/LaunchAgents/com.hermit-agent.asst.status-reporter.plis
 **Bot token 存在哪？**  
 `~/.claude/channels/telegram-<name>/.env`（mode 600，项目外面）。也在 `.claude/settings.local.json` 里（已 gitignore）。
 
+**第一条 DM 会触发 pairing code 吗？**  
+不会。CLI 会在 `~/.claude/channels/telegram-<name>/access.json` 里把你的 user ID 预置进 allowlist，所以你自己的 DM 从第一条开始就直通。陌生人摸到 bot `@handle` 发 DM 还是会走 pairing 流程（`dmPolicy: "pairing"`），不会被静默投递进来。
+
 **怎么干净删一个 agent？**
 
 ```bash

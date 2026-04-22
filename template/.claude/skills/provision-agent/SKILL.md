@@ -56,7 +56,7 @@ The CLI will:
 1. Verify prereqs (claude CLI, tmux, bun, node ≥18, macOS).
 2. Validate the bot token against Telegram's `getMe`.
 3. Copy the template into `../<name>/`.
-4. Write `~/.claude/channels/telegram-<name>/.env` with the token.
+4. Write `~/.claude/channels/telegram-<name>/.env` (token) and `access.json` (user pre-allowed so the first DM skips the pairing-code round-trip).
 5. Run `claude plugin install telegram@claude-plugins-official -s project`.
 6. `npm install` Playwright inside the new agent.
 7. Print next steps.
