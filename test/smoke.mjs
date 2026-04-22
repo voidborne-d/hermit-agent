@@ -113,6 +113,16 @@ const checks = [
       const s = readFileSync(join(TARGET, 'scripts/launchd-sync.sh'), 'utf8');
       return s.includes('Usage:') && s.includes('LOADED') && s.includes('RELOAD') && s.includes('launchctl load');
     })()],
+  ['migrate-openclaw skill present and user-invocable',
+    (() => {
+      const p = join(TARGET, '.claude/skills/migrate-openclaw/SKILL.md');
+      if (!existsSync(p)) return false;
+      const s = readFileSync(p, 'utf8');
+      return s.includes('user_invocable: true')
+        && s.includes('launchd-sync.sh')
+        && s.includes('~/.openclaw/')
+        && s.includes('com.hermit-agent.');
+    })()],
   ['settings.local.json wires markdown-strip hook for telegram reply+edit',
     (() => {
       const s = JSON.parse(readFileSync(join(TARGET, '.claude/settings.local.json'), 'utf8'));
