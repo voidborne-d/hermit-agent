@@ -150,6 +150,15 @@ const checks = [
       const s = readFileSync(join(TARGET, 'launchd/cron-example.plist'), 'utf8');
       return s.includes('./scripts/with-timeout.sh 1200');
     })()],
+  ['AGENTS.md carries MCP Registry Safety section',
+    (() => {
+      const s = readFileSync(join(TARGET, 'AGENTS.md'), 'utf8');
+      return s.includes('## MCP Registry Safety')
+        && s.includes('claude mcp add')
+        && s.includes('invalidates EVERY deferred MCP tool schema')
+        && s.includes('./restart.sh')
+        && s.includes('NOT a substitute');
+    })()],
   ['settings.local.json wires markdown-strip hook for telegram reply+edit',
     (() => {
       const s = JSON.parse(readFileSync(join(TARGET, '.claude/settings.local.json'), 'utf8'));

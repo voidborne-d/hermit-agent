@@ -55,6 +55,21 @@ Before `Read` on ANY image (png / jpg / jpeg / gif / webp / bmp / tiff):
 
 Why: an image with long edge > 2000px triggers a silent dimension-limit crash that kills the session mid-turn, including the reply tool. The safe-image pipeline resizes to ≤1800px long-edge before Read.
 
+## MCP Registry Safety — HARD RULE
+
+**Never run `claude mcp add` or `claude mcp remove` inside a live session when you depend on other MCP tools** (especially `mcp__plugin_telegram_telegram__reply` — losing that = silent agent with no way to notify).
+
+Mutating the MCP registry mid-session invalidates EVERY deferred MCP tool schema in the session — not just the one being added/removed. Telegram reply, playwright-browser, everything. They all go "no longer available" until the session restarts.
+
+If you must add/remove:
+1. **Preferred:** stop the agent → `claude mcp add|remove …` → `./start.sh` (or `./restart.sh <old_pid>`).
+2. **Acceptable:** run the mutation, then immediately fire `./restart.sh $(cat agent.pid)` via Bash. Current turn finishes, tmux respawns the pane with a fresh claude.
+3. Write "Session restart required" to memory BEFORE touching the registry in case anything fails mid-flight.
+
+**Bot-API-direct scripts are NOT a substitute for MCP Telegram.** A `tg-send.sh` hitting `https://api.telegram.org/bot.../sendMessage` can push plain text one-way but has NO inbound delivery, NO `reply_to`, NO reactions, NO attachments. If you're writing one as a "workaround" — you're papering over a broken session. Restart.
+
+Why: 2026-04-23 — a sibling agent (`sway003/design`) ran `claude mcp add TalkToFigma …` mid-session, killed all MCP handles, wrote a Bot API fallback, went dark for hours.
+
 ## Shell Safety — HARD RULE
 
 **Never scan broad filesystem trees.** `find` is the most frequent session-killer — treat it as a sharp tool.
