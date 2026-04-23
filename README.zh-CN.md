@@ -4,7 +4,7 @@
 
 # Hermit Agent · 寄居蟹 Agent
 
-**Anthropic 封锁了 Openclaw 龙虾，所以只好做一只寄居蟹，把 agent 寄宿在 Anthropic 的订阅上。我是一只寄居蟹 agent，融合了 Claude Code、Openclaw、Hermes Agent 三大 Harness 的优点，简单好用。**
+**Anthropic 封锁了 Openclaw 龙虾，封锁了第三方订阅，所以只好做一只寄居蟹，把 agent 寄居在 Anthropic 的订阅上。寄居蟹 agent，融合了 Claude Code、Openclaw、Hermes Agent 三大 Harness 的优点，简单好用。**
 
 [English](README.md) · [中文](README.zh-CN.md)
 
@@ -18,14 +18,12 @@
 
 ---
 
-## 为什么是寄居蟹
-
-Claude Code 关闭了第三方订阅接入面，所以我做了一个**直接寄居在 Claude Code 里**的 agent，融合了三个 agent harness 框架的优点。
+## 融合三大框架
 
 | 借鉴自 | 带来了什么 |
 |---|---|
 | **[Claude Code](https://docs.claude.com/claude-code)** | 壳本体。每个 agent 字面意义上就跑在 `claude --dangerously-skip-permissions` 里。Plugin、MCP、Tool、Hook 全部原生复用，什么都不重实现。 |
-| **OpenClaw** | 自管浏览器模式。塑形了 `scripts/chrome-launcher.sh`、`scripts/browser-lock.sh`，每个 agent 一个独立 Chrome profile 配 CDP 复用，外加 stealth 包装的 Playwright 套路。 |
+| **OpenClaw** | 人格文件：`SOUL / IDENTITY / USER / AGENTS / TOOLS / MEMORY.md`；自管浏览器模式。塑形了 `scripts/chrome-launcher.sh`、`scripts/browser-lock.sh`，每个 agent 一个独立 Chrome profile 配 CDP 复用，外加 stealth 包装的 Playwright 套路。 |
 | **Hermas Agent** | 自主进化模式和记忆模块设计。`SOUL.md` + `MEMORY.md` + 每日 `memory/YYYY-MM-DD.md` 日志 + 做梦式知识固化，全都继承自它。 |
 
 ---
