@@ -143,41 +143,26 @@ When a message arrives via `<channel source="plugin:telegram:telegram">`, the us
 
 These are silent failure modes — forgetting either makes the user think you went dark.
 
-## Telegram Sigil: `!!` → CLI Command
+## CLI Commands via Natural Language
 
-If a Telegram message from the user starts with `!!`, treat it as a Claude Code CLI built-in command. Strip the `!!` prefix, prepend `/` if missing, and invoke:
+sway triggers Claude Code built-in slash commands through plain English or Chinese requests — no explicit sigil (the old `!!` prefix was retired 2026-04-23). Recognize the intent, then route through `scripts/exec-cli-command.sh "/<command>" <delay-seconds>`, which schedules a `tmux send-keys` with default 5s delay so the current turn can finish cleanly.
 
-```
-scripts/exec-cli-command.sh "/<command>" <delay-seconds>
-```
+Safe → invoke directly, then reply confirming what was scheduled:
 
-Examples:
-- `!!compact` → `scripts/exec-cli-command.sh "/compact"`
-- `!!clear` → `scripts/exec-cli-command.sh "/clear"` (confirm first — destructive)
-- `!!model opus` → `scripts/exec-cli-command.sh "/model opus"`
-- `!!status` → `scripts/exec-cli-command.sh "/status"`
+- "压缩上下文" / "compact" / "compact the context" / "精简一下" / "太长了，整理一下" → `/compact`
+- "换 opus/sonnet/haiku" / "切模型 opus" → `/model opus` (always pass the model as arg; bare `/model` opens a picker and is blocked)
+- "查状态" / "show status" → `/status`
 
-Behavior:
-- Script schedules `tmux send-keys` with default 5s delay so the current turn can finish cleanly.
-- Always reply on Telegram confirming what was scheduled (don't silently fire).
-- For destructive commands (`/clear`, `/exit`, `/logout`), confirm scope with the user before scheduling unless the message explicitly says "force" / "yes".
+Destructive → confirm once via Telegram reply ("confirm clear? this wipes the current conversation"), unless sway already said "立即" / "force" / "confirmed" / "yes":
 
-Interactive commands are BLOCKED (the script rejects them with exit 4). These open modal panels that freeze the REPL until dismissed at the terminal, which cuts off Telegram replies:
+- "清空上下文" / "清空" / "clear context" / "reset" / "start fresh" / "重置对话" → `/clear`
+- "退出" / "exit" / "logout" → `/exit` or `/logout`
+
+Interactive commands are BLOCKED by `exec-cli-command.sh` (exit 4) — these open modal panels that freeze the REPL until dismissed at the terminal, cutting off Telegram replies. If sway asks for one, explain it's interactive-only and suggest running it at the terminal directly:
+
 - `/help /config /memory /agents /mcp /permissions /bashes /hooks /ide`
 - `/login /resume /bug /output-style /statusline /terminal-setup /vim`
-- `/model` with NO arg (picker UI); `/model opus` with arg is one-shot and fine.
-
-If the user sends one via `!!`, explain it's interactive-only and suggest running it at the terminal directly.
-
-### Natural-language compact / clear
-
-The `!!` sigil is the explicit form. Also honor plain-language requests — no prefix needed — for context management:
-
-- "compact" / "compact the context" / "trim" / "it's getting long" → `scripts/exec-cli-command.sh "/compact"` (default 5s delay so the current turn can finish)
-- "clear context" / "reset" / "start fresh" → `/clear` is DESTRUCTIVE. Confirm once via Telegram reply ("confirm clear? this wipes the current conversation") unless the user already said "force" / "confirmed" / "yes". Then `scripts/exec-cli-command.sh "/clear"`.
-- "switch to opus / sonnet / haiku" → `scripts/exec-cli-command.sh "/model opus"` (always pass the model name as arg; `/model` alone opens the picker and is blocked)
-
-Rule of thumb: compact is safe → invoke directly (reply confirming what was scheduled). clear / exit / logout are destructive → confirm first. Everything else stays behind the explicit `!!` sigil.
+- `/model` with NO arg (picker UI)
 
 Reply pattern after invoking: "Scheduled /compact — new turn will start from compacted context in ~5s." Don't silently fire.
 
