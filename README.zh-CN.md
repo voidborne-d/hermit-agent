@@ -153,11 +153,11 @@ Agent 之间完全独立：独立 bot token、独立记忆、独立目录。
 
 asst 的 `cron` skill 会处理。跨重启的任务走 `launchd`：
 
-1. 在 agent 的 `launchd/` 目录放一份 plist——复制 `launchd/cron-example.plist.tmpl`，`Label` 改成 `com.hermit-agent.<agent>.cron-<task>`，`ProgramArguments` 指向你要跑的命令。
+1. 在 agent 的 `launchd/` 目录放一份 plist——复制 `launchd/cron-example.plist.tmpl`，`Label` 改成 `com.hermit-agent.<agent>.cron-<task>`，`ProgramArguments` 指向你要跑的命令。真正执行的活外面包一层 `scripts/with-timeout.sh 1200`——20 分钟是天花板不是目标。
 2. 同步到生效目录：`./scripts/launchd-sync.sh .`（幂等：新的 `LOADED`，改过的 `RELOAD`，一致的 skip；加 `--dry-run` 预览）。
 3. 验证：`launchctl list | grep com.hermit-agent.<agent>`。
 
-光写 plist 不会生效——`launchd-sync.sh` 才是"生成"和"运行"之间的那一步。每次加、改、改名 plist 都要再跑一次。
+光写 plist 不会生效——`launchd-sync.sh` 才是"生成"和"运行"之间的那一步。每次加、改、改名 plist 都要再跑一次。timeout 包装有必要：有条 cron 跑偏过一次，12h38m 卡住 3 个 fire 窗口才被人为杀掉。`AGENTS.md` → "Cron Safety" 讲清了纪律。
 
 ---
 

@@ -57,16 +57,40 @@ Why: an image with long edge > 2000px triggers a silent dimension-limit crash th
 
 ## Shell Safety — HARD RULE
 
-**Never `find /` or scan the whole filesystem from root.** Scope every search to known directories (this workspace, `~/.claude`, `/tmp`, project dirs). Any `find` must include `-maxdepth N` (usually 3–5).
+**Never scan broad filesystem trees.** `find` is the most frequent session-killer — treat it as a sharp tool.
 
-Why: macOS `/System`, `/Library`, `/private` contain millions of files. `find /` can run for 10+ minutes without returning and can wedge the Claude Code event loop — even `Ctrl-C` / `ESC` stops working. Recovery requires `kill -9` + `restart.sh`.
+Two documented incidents this came from:
+- `find / -iname "*foo*" | head -10` — macOS `/System` `/Library` `/private` contain millions of files. The `find` ran for 9 min without returning. Killing the child process left the parent shell as a defunct zombie and wedged the Claude Code event loop — `ESC`/`Ctrl-C`/`SIGCHLD` all stopped working. Recovery: `kill -9` the claude main process + `restart.sh`.
+- `find /Users/mac -maxdepth 5 -type f \( -name "*.json" -o -name ".env*" … \) | xargs grep -l "TELEGRAM_BOT_TOKEN" | head -5` — crawled `~/Library/Containers` (macOS app sandboxes, hundreds of thousands of files) for 12h38m inside a cron without completing. `-maxdepth 5` is not enough when the root is `~/Library`.
 
 Rules:
-1. Never `find /` (or from `~` recursively without bounds).
-2. `find` must include `-maxdepth N`.
-3. Prefer Glob / Grep tools (default-scoped to cwd).
-4. On macOS, `mdfind <query>` uses the Spotlight index — seconds, not minutes.
-5. If Bash gets wedged, external kill of the child isn't enough — `kill -9` the claude main process + `restart.sh`.
+1. **Never `find /`. Never `find /Users/<you>`. Never `find ~`.** `~/Library` especially — Containers, Caches, Group Containers, WebKit — no practical `-maxdepth` saves you.
+2. Every `find` must pin a narrow root AND include `-maxdepth 3` by default. Raise only for a specific reason.
+3. Prefer Glob / Grep tools (default-scoped to cwd) over shell `find`.
+4. File-by-name search on macOS: `mdfind -onlyin <dir> <query>` — Spotlight index, seconds not minutes.
+5. Never pipe `find | xargs grep` on a wide root. Even with `head -N` at the tail, grep won't short-circuit until find produces enough matches, which may never arrive in sane time.
+6. If a shell call runs > 60s with no sign of progress, KILL IT and reconsider. Don't hope.
+7. If Bash wedges, external kill of the child isn't enough — `kill -9` the claude main process + `restart.sh`.
+
+## Token Safety — HARD RULE
+
+Credentials live at well-known paths documented in `TOOLS.md` (Keychain-backed tokens, mode-600 secrets files, settings env blocks). Reference them by path; never crawl the filesystem for them.
+
+Rules:
+1. **Never grep or find the filesystem for tokens, API keys, secrets, `TELEGRAM_BOT_TOKEN`, `.env*`, `api_key`, `ghp_`, `sk-`, `Bearer`.** If you don't know where a credential lives, check `TOOLS.md` or ask the user. Crawling wastes time, hits `~/Library` traps, and any match ends up in logs.
+2. **Never echo / print / log a token value.** Not to stdout, not to daily memory files, not to Telegram, not to cron logs. To prove a credential works, run the command that uses it and report the HTTP status / response metadata — never the token itself.
+3. **Never pass a token on the command line.** `curl -H "Authorization: Bearer $TOKEN"` exposes it in `ps auxwww`. Use `--header @file`, stdin, or an env var the callee already has access to.
+4. **Never commit credentials.** The `.gitignore` ships with `.env*` and secrets paths. Before any `git add`, spot-check the diff.
+5. **Historical leaks** (dead tokens in old archives) get redacted in place: `[REDACTED YYYY-MM-DD — <why>]`. Don't wait for rotation.
+
+## Cron Safety — HARD RULE
+
+Cron tasks (LaunchAgent plists under `launchd/com.hermit-agent.<agent>.cron-*.plist`) run as `claude -p` with the prompt from `cron/<task>.md`. Two rules for anything that fires inside a cron invocation:
+
+1. **Stay strictly on-prompt.** If `cron/moltbook-outreach.md` says do moltbook outreach, you do moltbook outreach — not "let me also audit X" or any ad-hoc cleanup that occurs mid-task. Cron has no human in the loop and cannot be interrupted by Telegram. Off-prompt exploration is how a cron burns half a day on the wrong thing.
+2. **Hard runtime ceiling.** Wrap every cron's `claude -p` in `scripts/with-timeout.sh 1200` (provided). Twenty minutes is the ceiling — not a target. If a task legitimately needs more than that, reshape it: split into multiple crons, preprocess outside the invocation, persist state between runs. Don't raise the timeout.
+
+A past cron drifted into `find ~/Library -type f -name "*.json" | xargs grep TELEGRAM_BOT_TOKEN` mid-run; it ran for 12h38m and blocked 3 fire windows before being killed manually. The with-timeout wrapper is the floor; discipline above it is on you.
 
 ## Safety
 

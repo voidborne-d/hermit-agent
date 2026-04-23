@@ -123,6 +123,33 @@ const checks = [
         && s.includes('~/.openclaw/')
         && s.includes('com.hermit-agent.');
     })()],
+  ['with-timeout.sh exists and is executable',
+    (() => { try { return (statSync(join(TARGET, 'scripts/with-timeout.sh')).mode & 0o111) !== 0; } catch { return false; } })()],
+  ['with-timeout.sh has watchdog + timeout-124 semantics',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/with-timeout.sh'), 'utf8');
+      return s.includes('kill -TERM') && s.includes('kill -KILL') && s.includes('exit 124');
+    })()],
+  ['AGENTS.md carries Token Safety section',
+    (() => {
+      const s = readFileSync(join(TARGET, 'AGENTS.md'), 'utf8');
+      return s.includes('## Token Safety') && s.includes('Never grep or find the filesystem for tokens') && s.includes('Never echo / print / log a token');
+    })()],
+  ['AGENTS.md carries Cron Safety section referring to with-timeout.sh',
+    (() => {
+      const s = readFileSync(join(TARGET, 'AGENTS.md'), 'utf8');
+      return s.includes('## Cron Safety') && s.includes('with-timeout.sh 1200') && s.includes('Stay strictly on-prompt');
+    })()],
+  ['AGENTS.md Shell Safety bans find on ~/Library and wide pipes',
+    (() => {
+      const s = readFileSync(join(TARGET, 'AGENTS.md'), 'utf8');
+      return s.includes('Never `find /Users/<you>`') && s.includes('find | xargs grep') && s.includes('-maxdepth 3');
+    })()],
+  ['cron-example plist wraps real work in with-timeout.sh',
+    (() => {
+      const s = readFileSync(join(TARGET, 'launchd/cron-example.plist'), 'utf8');
+      return s.includes('./scripts/with-timeout.sh 1200');
+    })()],
   ['settings.local.json wires markdown-strip hook for telegram reply+edit',
     (() => {
       const s = JSON.parse(readFileSync(join(TARGET, '.claude/settings.local.json'), 'utf8'));

@@ -9,20 +9,27 @@
          ~/Library/LaunchAgents/com.hermit-agent.{{AGENT_NAME}}.<TASK>.plist
 
     Then edit: the `Label`, `ProgramArguments` (point it at your script),
-    and `StartInterval` (seconds between runs). Load with `launchctl load`.
+    and `StartInterval` (seconds between runs). Load with `scripts/launchd-sync.sh .`
+    (don't forget — writing the plist alone does NOT activate it).
 
-    See docs/cron.md for the full walkthrough.
+    See the README's "Scheduled tasks" section for the full flow.
+
+    Every cron's real work should be wrapped in scripts/with-timeout.sh so a
+    misbehaving task can't hold the slot forever. 1200s (20 min) is the ceiling
+    we found sane — not a target. See AGENTS.md "Cron Safety" for why.
   -->
   <dict>
     <!-- Unique identifier — must match the filename (minus .plist) -->
     <key>Label</key>
     <string>com.hermit-agent.{{AGENT_NAME}}.EXAMPLE-TASK</string>
 
-    <!-- The command. First entry is the binary, remaining are argv. -->
+    <!-- The command. First entry is the binary, remaining are argv.
+         Wrap the real work in with-timeout.sh so runaway tasks self-terminate. -->
     <key>ProgramArguments</key>
     <array>
       <string>/bin/bash</string>
-      <string>{{AGENT_DIR}}/scripts/EXAMPLE-TASK.sh</string>
+      <string>-c</string>
+      <string>cd {{AGENT_DIR}} &amp;&amp; ./scripts/with-timeout.sh 1200 ./scripts/EXAMPLE-TASK.sh</string>
     </array>
 
     <!-- How often to run, in seconds. 600 = every 10 minutes. -->
