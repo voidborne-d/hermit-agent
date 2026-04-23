@@ -145,6 +145,14 @@ const checks = [
       const s = readFileSync(join(TARGET, 'AGENTS.md'), 'utf8');
       return s.includes('Never `find /Users/<you>`') && s.includes('find | xargs grep') && s.includes('-maxdepth 3');
     })()],
+  ['AGENTS.md Shell Safety also bans wide Glob/Grep tool patterns',
+    (() => {
+      const s = readFileSync(join(TARGET, 'AGENTS.md'), 'utf8');
+      return s.includes('Glob tool') && s.includes('Grep tool')
+        && s.includes('ripgrep')
+        && s.includes('Three documented incidents')
+        && s.includes('`/Users/<you>/**`');
+    })()],
   ['cron-example plist wraps real work in with-timeout.sh',
     (() => {
       const s = readFileSync(join(TARGET, 'launchd/cron-example.plist'), 'utf8');

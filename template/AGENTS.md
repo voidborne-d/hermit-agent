@@ -72,20 +72,25 @@ Why: 2026-04-23 — a sibling agent (`sway003/design`) ran `claude mcp add TalkT
 
 ## Shell Safety — HARD RULE
 
-**Never scan broad filesystem trees.** `find` is the most frequent session-killer — treat it as a sharp tool.
+**Never point ANY recursive search at a wide root.** On macOS this includes the shell `find` command, the built-in **Glob tool**, and the built-in **Grep tool** — Glob and Grep lean on `ripgrep` under the hood, so "I'm using the Claude tool, not find" does NOT save you. A pattern anchored at `/Users/<you>/**` or `~/**` can reach `~/Library/Containers` (app sandboxes, 100k+ files) and deadlock Claude Code's Node event loop the same way `find /` does.
 
-Two documented incidents this came from:
-- `find / -iname "*foo*" | head -10` — macOS `/System` `/Library` `/private` contain millions of files. The `find` ran for 9 min without returning. Killing the child process left the parent shell as a defunct zombie and wedged the Claude Code event loop — `ESC`/`Ctrl-C`/`SIGCHLD` all stopped working. Recovery: `kill -9` the claude main process + `restart.sh`.
-- `find /Users/mac -maxdepth 5 -type f \( -name "*.json" -o -name ".env*" … \) | xargs grep -l "TELEGRAM_BOT_TOKEN" | head -5` — crawled `~/Library/Containers` (macOS app sandboxes, hundreds of thousands of files) for 12h38m inside a cron without completing. `-maxdepth 5` is not enough when the root is `~/Library`.
+Three documented incidents:
+
+- **`find /` (Bash)** — `find / -iname "*foo*" | head -10`. macOS `/System` `/Library` `/private` contain millions of files. The `find` ran 9 min without returning. External `kill` on the find PID left the parent shell as a defunct zombie that the Claude Code main process never reaped. The Node event loop blocked sleeping on the shell pipe — `ESC`/`Ctrl-C`/`SIGCHLD` all stopped reaching the UI. Recovery: `kill -9` the claude main process + `restart.sh`.
+
+- **`find /Users/<you> -maxdepth 5` (Bash, in cron)** — `find /Users/mac -maxdepth 5 -type f \( -name "*.json" -o -name ".env*" … \) | xargs grep -l TELEGRAM_BOT_TOKEN | head -5`. Crawled `~/Library/Containers` for 12h38m without completing. `-maxdepth 5` does nothing against sandbox tree depth.
+
+- **Glob tool `/Users/<you>/**/…`** — a session called the Glob tool with a pattern anchored at `/Users/mac/**/sim/package.json`. The tool's internal 20s ripgrep timeout fired, but the timeout didn't cleanly propagate — Node event loop hung 20+ min, session dark until `kill -9` + `restart.sh`. The lesson: **"use Glob/Grep instead of find" is NOT a fix if the pattern has a wide root.** The tools share the vulnerability.
 
 Rules:
-1. **Never `find /`. Never `find /Users/<you>`. Never `find ~`.** `~/Library` especially — Containers, Caches, Group Containers, WebKit — no practical `-maxdepth` saves you.
-2. Every `find` must pin a narrow root AND include `-maxdepth 3` by default. Raise only for a specific reason.
-3. Prefer Glob / Grep tools (default-scoped to cwd) over shell `find`.
-4. File-by-name search on macOS: `mdfind -onlyin <dir> <query>` — Spotlight index, seconds not minutes.
-5. Never pipe `find | xargs grep` on a wide root. Even with `head -N` at the tail, grep won't short-circuit until find produces enough matches, which may never arrive in sane time.
-6. If a shell call runs > 60s with no sign of progress, KILL IT and reconsider. Don't hope.
-7. If Bash wedges, external kill of the child isn't enough — `kill -9` the claude main process + `restart.sh`.
+
+1. **Never `find /`. Never `find /Users/<you>`. Never `find ~`.** And **never point the Glob tool or Grep tool at `/Users/<you>/**` or `~/**`** — same ripgrep, same wedge. `~/Library` is a bottomless pit (Containers, Caches, Group Containers, WebKit) and no `-maxdepth` saves you.
+2. Every `find` pins a narrow root AND uses `-maxdepth 3` by default. Raise only for a specific reason that justifies the risk.
+3. Glob / Grep tool `path` or `pattern` must begin with a specific subdirectory — e.g. `<agent-dir>/memory/**/*.md`, `<agent-dir>/skills/**/SKILL.md`. Not `/Users/<you>/**` or `~/**`.
+4. File-by-name queries: `mdfind -onlyin <dir> <query>` — Spotlight index, seconds, doesn't recurse at all.
+5. Never pipe `find | xargs grep` on a wide root. Even with `head -N` at the tail, grep won't short-circuit until find produces enough matches, which may never arrive.
+6. Any recursive search — Bash, Glob, or Grep — running > 60s with no sign of progress: KILL and rethink. Don't hope.
+7. Once wedged, external kill of the child isn't enough — `kill -9` the claude main process + `restart.sh`.
 
 ## Token Safety — HARD RULE
 
