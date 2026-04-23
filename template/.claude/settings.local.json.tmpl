@@ -51,6 +51,16 @@
             "command": "{{AGENT_DIR}}/scripts/hook-tg-strip-markdown.sh"
           }
         ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{AGENT_DIR}}/scripts/hooks/pre-read-image.sh",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

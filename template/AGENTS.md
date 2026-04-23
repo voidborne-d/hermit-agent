@@ -47,13 +47,13 @@ Prefer fewer, well-described curated entries over a flood. Evict/prune when a me
 
 ## Image Safety — HARD RULE
 
-Before `Read` on ANY image (png / jpg / jpeg / gif / webp / bmp / tiff):
+An image with long edge > 2000px crashes the session mid-turn — every API call afterwards returns 400 "Could not process image" until `/compact` or restart, including the reply tool, so you go dark with no way to notify. Defense is **layered**:
 
-1. Run `scripts/safe-image.sh <path>` first.
-2. Read the path it prints, NOT the original. **If safe-image.sh exits non-zero, STOP — report the error.** DO NOT Read the original as fallback. A failed resize means sips can't parse the image (corrupt, zero-byte, unsupported format, `<nil>` dimensions, etc.); Reading the original puts a broken image in context that makes every subsequent API call return 400 "Could not process image" until restart/compact.
-3. Every image source: Telegram downloads (`download_attachment`), screenshots, user-sent photos — no exceptions.
+**Layer 1 — mechanical (PreToolUse hook, always on):** `scripts/hooks/pre-read-image.sh` is wired into `.claude/settings.local.json` to fire before every `Read`. It parses the tool input, skips non-images fast (~9ms), runs `sips` on images, and for anything over 2000px it calls `scripts/safe-image.sh` to create a resized sidecar then blocks the Read with stderr telling the model to Read the sidecar instead. If `sips` can't parse the file at all, the hook blocks outright — fail-closed, because a wedged session is worse than a blocked Read.
 
-Why: an image with long edge > 2000px triggers a silent dimension-limit crash that kills the session mid-turn, including the reply tool. The safe-image pipeline resizes to ≤1800px long-edge before Read.
+**Layer 2 — the rule:** if the hook is ever disabled, misfires, or you're Reading outside the hook's coverage, still run `scripts/safe-image.sh <path>` yourself before Reading any png/jpg/jpeg/gif/webp/bmp/tiff — including Telegram downloads (`download_attachment`), playwright screenshots, user-sent photos. **If `safe-image.sh` exits non-zero, STOP — do NOT Read the original as fallback.** A failed resize means `sips` can't parse the image (corrupt, zero bytes, unsupported format, `<nil>` dimensions); Reading the original wedges the session.
+
+Past incident (2026-04-23): an agent took 7 playwright screenshots at 2880x2400 (default full-page capture) and Read them without `safe-image.sh` — session wedged for 10 minutes, blocked inbound Telegram messages from a collaborator. The hook exists to make that mistake impossible.
 
 ## MCP Registry Safety — HARD RULE
 

@@ -196,6 +196,30 @@ const checks = [
       const match = pre.find(e => e.matcher && e.matcher.includes('mcp__plugin_telegram_telegram__reply') && e.matcher.includes('mcp__plugin_telegram_telegram__edit_message'));
       return !!match && match.hooks?.some(h => h.command?.includes('hook-tg-strip-markdown.sh'));
     })()],
+  ['pre-read-image.sh exists and is executable',
+    (() => { try { return (statSync(join(TARGET, 'scripts/hooks/pre-read-image.sh')).mode & 0o111) !== 0; } catch { return false; } })()],
+  ['pre-read-image.sh blocks oversized images via exit 2 + sips dims',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/hooks/pre-read-image.sh'), 'utf8');
+      return s.includes('DIM_LIMIT=2000')
+        && s.includes("tool_name = \"Read\"".replace(/"/g,'"')) || s.includes('tool_name" = "Read"')
+        || (s.includes('tool_name') && s.includes('Read') && s.includes('exit 2') && s.includes('sips -g pixelWidth') && s.includes('safe-image.sh'));
+    })()],
+  ['settings.local.json wires Read matcher to pre-read-image.sh',
+    (() => {
+      const s = JSON.parse(readFileSync(join(TARGET, '.claude/settings.local.json'), 'utf8'));
+      const pre = s.hooks?.PreToolUse || [];
+      const match = pre.find(e => e.matcher === 'Read');
+      return !!match && match.hooks?.some(h => h.command?.includes('pre-read-image.sh'));
+    })()],
+  ['AGENTS.md Image Safety describes layered defense with hook as Layer 1',
+    (() => {
+      const s = readFileSync(join(TARGET, 'AGENTS.md'), 'utf8');
+      return s.includes('## Image Safety')
+        && s.includes('Layer 1 — mechanical')
+        && s.includes('pre-read-image.sh')
+        && s.includes('fail-closed');
+    })()],
 ];
 
 let pass = 0, fail = 0;
