@@ -4,7 +4,7 @@
 
 # Hermit Agent · 寄居蟹 Agent
 
-**不是一个独立的 agent 框架，而是寄居在 Claude Code 上的一只寄居蟹。一条命令开箱一个 Telegram 连接的 Claude Code agent，自带人设、长期记忆、定时任务、浏览器自动化。**
+**Anthropic 封锁了 Openclaw 龙虾，所以只好做一只寄居蟹，把 agent 寄宿在 Anthropic 的订阅上。我是一只寄居蟹 agent，融合了 Claude Code、Openclaw、Hermes Agent 三大 Harness 的优点，简单好用。**
 
 [English](README.md) · [中文](README.zh-CN.md)
 
