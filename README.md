@@ -51,7 +51,7 @@ Open Telegram, DM the bot you just registered with @BotFather. First DM triggers
 |---|---|
 | **Persona** | `SOUL / IDENTITY / USER / AGENTS / TOOLS / MEMORY.md` loaded every session. Edit the files → edit the agent. |
 | **Long-term memory** | Daily logs at `memory/YYYY-MM-DD.md`, curated long-term at `MEMORY.md`. Survives restarts. |
-| **Telegram I/O** | Native reply / react / edit / attachment download via `@claude-plugins-official/telegram`. Group-chat etiquette built in. `!!` sigil routes messages to Claude Code commands (`!!compact`, `!!model`, `!!status`). |
+| **Telegram I/O** | Native reply / react / edit / attachment download via `@claude-plugins-official/telegram`. Group-chat etiquette built in. Just say it in plain English or Chinese — "compact the context" / "压缩上下文" / "switch to opus" / "restart" / "查状态" — and the agent routes to the right Claude Code command. No sigil required. |
 | **Lifecycle** | `start.sh` + `restart.sh` wrap the agent in a named `tmux` session. Push alerts when context crosses 100k / 200k / ... / 950k thresholds, or when tool use gets chatty. |
 | **Scheduler** | Three tiers — session-only `cron` skill, cross-restart `HEARTBEAT.md`, OS-durable `launchd` plists. |
 | **Browser** | Dedicated Chrome profile + CDP + Playwright + stealth-init anti-detection. |
@@ -114,7 +114,7 @@ The agent now runs in a detached `tmux` session named `claude-asst`. DM the bot.
 
 ## First DM: asst introduces itself
 
-On first contact, asst sends a one-shot orientation — how to talk to it, available `!!` commands, how to spawn more agents — then deletes its own `FIRST_RUN.md` so it never greets you again.
+On first contact, asst sends a one-shot orientation — how to talk to it, which natural-language phrases trigger built-in commands (compact, restart, switch model, status), how to spawn more agents — then deletes its own `FIRST_RUN.md` so it never greets you again.
 
 ---
 
@@ -180,7 +180,7 @@ The CLI automatically installs a `launchd` coordinator the first time you run it
 | Plugin subprocess missing | `./restart.sh` auto-retries once. Still broken? Check `~/.claude/channels/telegram-<name>/.env` is mode 600 with the token. |
 | `exceeds the dimension limit` image crash | All image Reads MUST go through `scripts/safe-image.sh` first. Recover with restart + `/compact`. |
 | `claude plugin install failed` | Ensure `claude` is on PATH and logged in (`claude login`). |
-| Context bloat | Send `!!compact` from Telegram, or `/compact` directly in the tmux pane. |
+| Context bloat | Ask on Telegram — "compact" / "压缩上下文" / "精简一下" — the agent fires `/compact` via tmux. Or type `/compact` directly in the pane. |
 | Bot silent on a fresh Mac | Claude Code may have raised the "trust this folder" or "allow dangerous mode" TUI dialog — which blocks startup. The CLI pre-acknowledges both, but if something went wrong, `tmux attach -t claude-<name>`, press Enter to dismiss any pending dialog, then detach with Ctrl-b d. |
 
 ---

@@ -10,10 +10,12 @@ If this file is already gone on first DM, skip — the user has been oriented al
 
 TO TALK TO ME: just type. I reply via Telegram plain text.
 
-COMMON COMMANDS (Telegram):
-• !!compact — trim my context when it grows long
-• !!model opus — switch model
-• !!status — session status
+CONTROL ME IN PLAIN LANGUAGE (no prefix needed — just say it):
+• "compact" / "压缩上下文" — trim my context when it grows long
+• "restart" / "重启" — full session restart via restart.sh (I'll confirm first)
+• "switch to opus" / "换 opus" — change model mid-session
+• "status" / "查状态" — what I'm doing right now
+• "clear" / "清空" — wipe the conversation (destructive; I'll confirm first)
 
 CREATE MORE AGENTS: tell me "spin up a hermit called X for purpose Y with token Z" and I'll scaffold a sibling, start it, and send you its @handle.
 

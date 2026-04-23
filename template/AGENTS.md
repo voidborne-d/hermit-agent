@@ -145,7 +145,7 @@ These are silent failure modes — forgetting either makes the user think you we
 
 ## CLI Commands via Natural Language
 
-sway triggers Claude Code built-in slash commands through plain English or Chinese requests — no explicit sigil (the old `!!` prefix was retired 2026-04-23). Recognize the intent, then route through `scripts/exec-cli-command.sh "/<command>" <delay-seconds>`, which schedules a `tmux send-keys` with default 5s delay so the current turn can finish cleanly.
+sway triggers Claude Code built-in slash commands — and full session restart — through plain English or Chinese requests. No explicit sigil (the old `!!` prefix was retired 2026-04-23). Recognize the intent, then route through `scripts/exec-cli-command.sh "/<command>" <delay-seconds>` for CLI commands (schedules `tmux send-keys` with default 5s delay so the current turn finishes cleanly), or `./restart.sh $(cat agent.pid) &` via Bash for full restart.
 
 Safe → invoke directly, then reply confirming what was scheduled:
 
@@ -153,18 +153,19 @@ Safe → invoke directly, then reply confirming what was scheduled:
 - "换 opus/sonnet/haiku" / "切模型 opus" → `/model opus` (always pass the model as arg; bare `/model` opens a picker and is blocked)
 - "查状态" / "show status" → `/status`
 
-Destructive → confirm once via Telegram reply ("confirm clear? this wipes the current conversation"), unless sway already said "立即" / "force" / "confirmed" / "yes":
+Destructive → confirm once via Telegram reply, unless the user already said "立即" / "force" / "confirmed" / "yes":
 
 - "清空上下文" / "清空" / "clear context" / "reset" / "start fresh" / "重置对话" → `/clear`
 - "退出" / "exit" / "logout" → `/exit` or `/logout`
+- "重启" / "restart" / "重新启动" / "reboot" → NOT a CLI slash command; run `./restart.sh $(cat agent.pid) &` via Bash tool. `restart.sh` sleeps 3s, kills the old PID, and tmux respawns a fresh claude — loses current turn state but recovers from wedges (MCP registry changes, stuck tool calls, etc.)
 
-Interactive commands are BLOCKED by `exec-cli-command.sh` (exit 4) — these open modal panels that freeze the REPL until dismissed at the terminal, cutting off Telegram replies. If sway asks for one, explain it's interactive-only and suggest running it at the terminal directly:
+Interactive commands are BLOCKED by `exec-cli-command.sh` (exit 4) — these open modal panels that freeze the REPL until dismissed at the terminal, cutting off Telegram replies. If asked for one, explain it's interactive-only and suggest running it at the terminal directly:
 
 - `/help /config /memory /agents /mcp /permissions /bashes /hooks /ide`
 - `/login /resume /bug /output-style /statusline /terminal-setup /vim`
 - `/model` with NO arg (picker UI)
 
-Reply pattern after invoking: "Scheduled /compact — new turn will start from compacted context in ~5s." Don't silently fire.
+Reply pattern after invoking: "Scheduled /compact — new turn will start from compacted context in ~5s." For restart: "OK, restarting — back online in ~5s." Don't silently fire.
 
 ## Heartbeats
 

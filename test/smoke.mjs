@@ -159,14 +159,21 @@ const checks = [
       return s.includes('MAX_TRANSCRIPT_BYTES') && s.includes('50 * 1024 * 1024')
         && s.includes('with-timeout.sh') && s.includes('"$WITH_TIMEOUT" 3');
     })()],
-  ['AGENTS.md has CLI Commands via Natural Language (no !! sigil)',
+  ['AGENTS.md has CLI Commands via Natural Language (no !! sigil, includes restart)',
     (() => {
       const s = readFileSync(join(TARGET, 'AGENTS.md'), 'utf8');
       return s.includes('## CLI Commands via Natural Language')
         && s.includes('exec-cli-command.sh')
+        && s.includes('"重启" / "restart"')
+        && s.includes('./restart.sh $(cat agent.pid)')
         && !s.includes('Telegram Sigil')
         && !s.includes('`!!compact`')
         && !s.includes('`!!clear`');
+    })()],
+  ['FIRST_RUN.md uses natural-language examples (no !!)',
+    (() => {
+      const s = readFileSync(join(TARGET, 'FIRST_RUN.md'), 'utf8');
+      return s.includes('压缩上下文') && s.includes('重启') && !s.includes('!!compact');
     })()],
   ['cron-example plist wraps real work in with-timeout.sh',
     (() => {
