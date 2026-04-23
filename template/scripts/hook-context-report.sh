@@ -26,8 +26,25 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id // "unknown"')
 
 [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ] && exit 0
 
-usage=$(grep '"type":"assistant"' "$transcript_path" | tail -1 | \
-  jq -r '.message.usage | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)' 2>/dev/null)
+# Cap: skip tier check on pathologically large transcripts. A 20h+ session can
+# grow the jsonl past 100MB; grep + tail on that while the file is actively
+# appended has occasionally held Stop phase past the UI's patience.
+# Missing a tier notify once is fine — next Stop will re-check.
+MAX_TRANSCRIPT_BYTES=$((50 * 1024 * 1024))
+size=$(stat -f %z "$transcript_path" 2>/dev/null)
+[ -n "$size" ] && [ "$size" -gt "$MAX_TRANSCRIPT_BYTES" ] && exit 0
+
+# Hard runtime cap on the grep+tail+jq pipeline — 3s is plenty for a well-formed
+# jsonl under 50MB; a bail-out is always safer than a hung Stop hook.
+WITH_TIMEOUT="$(dirname "$0")/with-timeout.sh"
+if [ -x "$WITH_TIMEOUT" ]; then
+  usage=$("$WITH_TIMEOUT" 3 sh -c \
+    "grep '\"type\":\"assistant\"' \"$transcript_path\" | tail -1 | \
+     jq -r '.message.usage | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)' 2>/dev/null" 2>/dev/null)
+else
+  usage=$(grep '"type":"assistant"' "$transcript_path" | tail -1 | \
+    jq -r '.message.usage | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)' 2>/dev/null)
+fi
 
 [ -z "$usage" ] || ! [[ "$usage" =~ ^[0-9]+$ ]] && exit 0
 

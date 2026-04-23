@@ -153,6 +153,12 @@ const checks = [
         && s.includes('Three documented incidents')
         && s.includes('`/Users/<you>/**`');
     })()],
+  ['hook-context-report.sh hardened: 50MB cap + with-timeout wrapping',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/hook-context-report.sh'), 'utf8');
+      return s.includes('MAX_TRANSCRIPT_BYTES') && s.includes('50 * 1024 * 1024')
+        && s.includes('with-timeout.sh') && s.includes('"$WITH_TIMEOUT" 3');
+    })()],
   ['cron-example plist wraps real work in with-timeout.sh',
     (() => {
       const s = readFileSync(join(TARGET, 'launchd/cron-example.plist'), 'utf8');
