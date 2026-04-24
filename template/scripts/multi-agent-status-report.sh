@@ -53,6 +53,31 @@ fmt_duration() {
   fi
 }
 
+# tmux pane state probe — distinguishes real stuck from stale session-status.json.
+# Claude Code's Stop hook can miss on abnormal turn exit (TLS / 500 / AUP /
+# scheduled-task interrupt), leaving state=running forever. We double-check
+# the tmux pane: "idle" = just ❯ prompt, "churning" = running an animated
+# tool/thinking turn. "unknown" means don't trust either signal.
+pane_state_check() {
+  local session="$1"
+  if ! tmux has-session -t "$session" 2>/dev/null; then
+    echo "unknown"
+    return
+  fi
+  local pane
+  pane=$(tmux capture-pane -t "$session" -p 2>/dev/null)
+  [ -z "$pane" ] && { echo "unknown"; return; }
+  if echo "$pane" | tail -6 | grep -qE "^[[:space:]]*[✻✢][[:space:]]+(Churn|Cook|Brew|Work|Think|Compact|Running|Saut|Crunch|Actualiz|Cogit|Ponder|Simmer|Processing|Stew|Grilling|Bak|Roast|Digest)"; then
+    echo "churning"
+    return
+  fi
+  if echo "$pane" | tail -6 | grep -qE "^❯[[:space:]]*$"; then
+    echo "idle"
+    return
+  fi
+  echo "unknown"
+}
+
 lines=()
 states_joined=""
 any_stuck=0
@@ -100,6 +125,22 @@ for dir in "$AGENTS_ROOT"/*/; do
     fi
   else
     computed=idle
+  fi
+
+  # Self-heal: if state=running for a while but the tmux pane is idle ❯,
+  # Stop hook likely missed (TLS / 500 / AUP abort). Reset the state file
+  # and report as idle. If the pane is actively churning we trust the state
+  # and leave it as stuck.
+  if [ "$computed" = "stuck" ]; then
+    pane_state=$(pane_state_check "claude-$name")
+    if [ "$pane_state" = "idle" ]; then
+      tmp_state=$(mktemp)
+      jq --argjson ts "$now" '.state="idle" | .last_stop_ts=$ts' "$state_file" > "$tmp_state" 2>/dev/null \
+        && mv "$tmp_state" "$state_file"
+      computed=idle
+      last_stop=$now
+      states_joined+="healed_${name};"
+    fi
   fi
 
   case "$computed" in

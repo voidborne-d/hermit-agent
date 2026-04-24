@@ -220,6 +220,15 @@ const checks = [
         && s.includes('pre-read-image.sh')
         && s.includes('fail-closed');
     })()],
+  ['multi-agent-status-report.sh has pane_state_check self-heal',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      return s.includes('pane_state_check()')
+        && s.includes('tmux has-session')
+        && s.includes('tmux capture-pane')
+        && s.includes('healed_')
+        && s.includes('Stop hook likely missed');
+    })()],
 ];
 
 let pass = 0, fail = 0;
