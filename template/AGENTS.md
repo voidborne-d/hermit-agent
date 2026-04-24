@@ -66,9 +66,9 @@ If you must add/remove:
 2. **Acceptable:** run the mutation, then immediately fire `./restart.sh $(cat agent.pid)` via Bash. Current turn finishes, tmux respawns the pane with a fresh claude.
 3. Write "Session restart required" to memory BEFORE touching the registry in case anything fails mid-flight.
 
-**Bot-API-direct scripts are NOT a substitute for MCP Telegram.** A `tg-send.sh` hitting `https://api.telegram.org/bot.../sendMessage` can push plain text one-way but has NO inbound delivery, NO `reply_to`, NO reactions, NO attachments. If you're writing one as a "workaround" — you're papering over a broken session. Restart.
+**Bot-API-direct scripts are NOT a substitute for MCP Telegram in interactive sessions.** In the tmux-based main session (user-facing, plugin sync runs normally), if MCP Telegram breaks you restart — you do not route around it by having some `tg-send.sh` hit `https://api.telegram.org/bot.../sendMessage`. Bot API curl can one-way push plain text but has NO inbound delivery, NO `reply_to`, NO reactions, NO attachments. Writing one is papering over a broken session. The fix is restart. See 2026-04-23: a sibling agent (`sway003/design`) ran `claude mcp add TalkToFigma …` mid-session, killed all MCP handles, wrote a Bot API fallback, went dark for hours. Should have restarted.
 
-Why: 2026-04-23 — a sibling agent (`sway003/design`) ran `claude mcp add TalkToFigma …` mid-session, killed all MCP handles, wrote a Bot API fallback, went dark for hours.
+**Cron -p exception.** Non-interactive `claude --dangerously-skip-permissions -p` invocations (launchd-fired cron tasks) by design don't run plugin sync — tested, neither `--mcp-config` nor `--plugin-dir` can bring the telegram plugin's bun online for the duration of a `-p` run, and `mcp__plugin_telegram_telegram__*` tools never appear in deferred-tools. For those sessions, curl-to-Bot-API for the final report is **permitted**; it isn't a workaround, it's the platform constraint. Distinction: if you're in a tmux session where MCP should work and you're routing around it, that's "restart." If you're in a cron `-p` where MCP never loaded, that's "curl."
 
 ## Shell Safety — HARD RULE
 

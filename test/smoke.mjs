@@ -229,6 +229,13 @@ const checks = [
         && s.includes('healed_')
         && s.includes('Stop hook likely missed');
     })()],
+  ['AGENTS.md MCP Registry Safety has cron -p Bot API exception',
+    (() => {
+      const s = readFileSync(join(TARGET, 'AGENTS.md'), 'utf8');
+      return s.includes('Cron -p exception')
+        && s.includes("by design don't run plugin sync")
+        && s.includes('is **permitted**');
+    })()],
 ];
 
 let pass = 0, fail = 0;
