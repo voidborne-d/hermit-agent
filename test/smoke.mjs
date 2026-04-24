@@ -236,6 +236,15 @@ const checks = [
         && s.includes("by design don't run plugin sync")
         && s.includes('is **permitted**');
     })()],
+  ['multi-agent-status-report.sh has stuck-escalation tier (🆘 CRITICAL)',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      return s.includes('stuck_counts')
+        && s.includes('prev_stuck_counts_json')
+        && s.includes('🆘')
+        && s.includes('CRITICAL stuck')
+        && s.includes('consider restart');
+    })()],
 ];
 
 let pass = 0, fail = 0;

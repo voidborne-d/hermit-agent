@@ -84,6 +84,17 @@ any_stuck=0
 any_active=0
 down_list=()
 
+# Consecutive-stuck escalation: if an agent stays stuck across >=2 back-to-back
+# digests (20+ min at the default 10-min cadence), the line promotes from
+# 🟥 stuck → 🆘 CRITICAL with a restart suggestion. Count resets on any non-stuck
+# outcome (idle / healed / running).
+prev_stuck_counts_json="{}"
+if [ -f "$ALERT_FILE" ]; then
+  prev_stuck_counts_json=$(jq -c '.stuck_counts // {}' "$ALERT_FILE" 2>/dev/null)
+  [ -z "$prev_stuck_counts_json" ] && prev_stuck_counts_json="{}"
+fi
+stuck_counts_entries=()
+
 for dir in "$AGENTS_ROOT"/*/; do
   name=$(basename "$dir")
   [ ! -f "$dir/CLAUDE.md" ] && continue
@@ -143,6 +154,16 @@ for dir in "$AGENTS_ROOT"/*/; do
     fi
   fi
 
+  # Escalation counter: increment when stuck, reset otherwise.
+  prev_stuck=$(echo "$prev_stuck_counts_json" | jq -r --arg k "$name" '.[$k] // 0')
+  [ "$prev_stuck" = "null" ] && prev_stuck=0
+  if [ "$computed" = "stuck" ]; then
+    stuck_count=$((prev_stuck + 1))
+  else
+    stuck_count=0
+  fi
+  stuck_counts_entries+=("\"$name\":$stuck_count")
+
   case "$computed" in
     idle)
       if [ "$last_stop" -gt 0 ]; then
@@ -162,7 +183,11 @@ for dir in "$AGENTS_ROOT"/*/; do
       ;;
     stuck)
       tool_dur=$(fmt_duration $((now - last_tool)))
-      lines+=("🟥 $name · stuck $tool_dur")
+      if [ "$stuck_count" -ge 2 ]; then
+        lines+=("🆘 $name · CRITICAL stuck $tool_dur (${stuck_count}× · consider restart)")
+      else
+        lines+=("🟥 $name · stuck $tool_dur")
+      fi
       any_stuck=1
       ;;
   esac
@@ -218,10 +243,12 @@ else
     --data-urlencode "text=${msg}" >/dev/null 2>&1
 fi
 
+stuck_counts_json="{$(IFS=,; echo "${stuck_counts_entries[*]}")}"
 jq -n \
   --argjson ts "$now" \
   --arg s "$states_joined" \
-  '{last_alert_ts:$ts, last_states:$s}' \
+  --argjson stuck "$stuck_counts_json" \
+  '{last_alert_ts:$ts, last_states:$s, stuck_counts:$stuck}' \
   > "$ALERT_FILE"
 
 exit 0
