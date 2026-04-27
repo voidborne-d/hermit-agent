@@ -245,6 +245,22 @@ const checks = [
         && s.includes('CRITICAL stuck')
         && s.includes('consider restart');
     })()],
+  ['claude-quota-probe.sh exists and is executable',
+    (() => {
+      const p = join(TARGET, 'scripts/claude-quota-probe.sh');
+      try {
+        const stat = statSync(p);
+        return stat.isFile() && (stat.mode & 0o111) !== 0;
+      } catch { return false; }
+    })()],
+  ['multi-agent-status-report.sh has claude code usage section',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      return s.includes('claude code')
+        && s.includes('claude-quota-probe.sh')
+        && s.includes('ccusage')
+        && s.includes('usage_lines');
+    })()],
 ];
 
 let pass = 0, fail = 0;

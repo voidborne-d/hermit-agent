@@ -233,6 +233,106 @@ for line in "${lines[@]}"; do
   msg+="$line"$'\n'
 done
 
+# ---------- Claude Code usage section ----------
+# Three data sources: (1) live 5h+weekly quota via /status panel scraped from a
+# throwaway probe REPL — see scripts/claude-quota-probe.sh for the why; (2)
+# active 5h block burn rate + projection from ccusage blocks; (3) today's
+# per-agent cost+tokens from ccusage daily. Each source fails independently;
+# missing data is silently dropped from the section. Requires `npx` and the
+# ccusage npm package (auto-fetched by npx); skipped silently if npx is
+# unavailable.
+fmt_tokens() {
+  local n=$1
+  if [ "$n" -ge 1000000 ]; then
+    printf '%.1fM' "$(echo "$n / 1000000" | bc -l)"
+  elif [ "$n" -ge 1000 ]; then
+    printf '%dk' "$((n / 1000))"
+  else
+    echo "$n"
+  fi
+}
+fmt_cost() {
+  printf '$%d' "$(printf '%.0f' "$1")"
+}
+
+usage_lines=()
+
+# Quota probe (best-effort).
+if [ -x "$SCRIPT_DIR/claude-quota-probe.sh" ]; then
+  probe_out=$("$SCRIPT_DIR/claude-quota-probe.sh" 2>/dev/null)
+  if [ -n "$probe_out" ] && grep -q "PROBE_OK=1" <<< "$probe_out"; then
+    eval "$probe_out"
+    reset5_short=$(echo "$QUOTA_5H_RESET" | sed 's/ (.*//')
+    resetw_short=$(echo "$QUOTA_WEEKLY_RESET" | sed 's/ (.*//; s/ at .*//')
+    usage_lines+=("5h: ${QUOTA_5H_PCT}% (resets $reset5_short)")
+    usage_lines+=("week: ${QUOTA_WEEKLY_PCT}% (resets $resetw_short)")
+  fi
+fi
+
+# Active 5h block burn / projection. Skip if npx missing.
+if command -v npx >/dev/null 2>&1; then
+  blocks_json=$(npx -y ccusage@latest blocks --json --active 2>/dev/null)
+  if [ -n "$blocks_json" ]; then
+    block_cost=$(echo "$blocks_json" | jq -r '.blocks[0].costUSD // empty' 2>/dev/null)
+    burn_per_h=$(echo "$blocks_json" | jq -r '.blocks[0].burnRate.costPerHour // empty' 2>/dev/null)
+    proj_cost=$(echo "$blocks_json" | jq -r '.blocks[0].projection.totalCost // empty' 2>/dev/null)
+    rem_min=$(echo "$blocks_json" | jq -r '.blocks[0].projection.remainingMinutes // empty' 2>/dev/null)
+    if [ -n "$block_cost" ]; then
+      line="block: $(fmt_cost "$block_cost")"
+      [ -n "$burn_per_h" ] && line+=" · burn $(fmt_cost "$burn_per_h")/h"
+      [ -n "$proj_cost" ] && line+=" · proj $(fmt_cost "$proj_cost")"
+      if [ -n "$rem_min" ]; then
+        h=$((rem_min / 60))
+        m=$((rem_min % 60))
+        [ "$h" -gt 0 ] && line+=" (${h}h${m}m left)" || line+=" (${m}m left)"
+      fi
+      usage_lines+=("$line")
+    fi
+  fi
+
+  # Today's per-agent breakdown.
+  daily_json=$(npx -y ccusage@latest daily --json --since "$(date +%Y%m%d)" -i 2>/dev/null)
+  if [ -n "$daily_json" ]; then
+    total_cost=$(echo "$daily_json" | jq -r '.totals.totalCost // 0')
+    total_tok=$(echo "$daily_json" | jq -r '.totals.totalTokens // 0')
+    if [ -n "$total_cost" ] && [ "$total_cost" != "0" ]; then
+      usage_lines+=("today: $(fmt_cost "$total_cost") / $(fmt_tokens "$total_tok") tok")
+      # Top 3 spenders today.
+      top=$(echo "$daily_json" | jq -r '
+        .projects | to_entries
+        | map({name: .key, cost: ([.value[] | .totalCost] | add // 0)})
+        | sort_by(-.cost)
+        | .[0:3]
+        | .[] | "\(.cost) \(.name)"
+      ' 2>/dev/null)
+      if [ -n "$top" ]; then
+        top_line=""
+        # Strip the encoded user/home prefix so the project shows as just its
+        # leaf name. Prefix encoding is /a/b/c → -a-b-c, so the last segment
+        # after the final '-' is usually meaningful.
+        agents_root_enc=$(echo "$AGENTS_ROOT" | sed 's|/|-|g')
+        while IFS=' ' read -r c name; do
+          [ -z "$c" ] && continue
+          short=$(echo "$name" | sed -E "s|^${agents_root_enc}-||; s|^-Users-[^-]+-||; s|^-home-[^-]+-||; s|-$||")
+          if [ ${#short} -gt 18 ]; then
+            short="${short:0:17}…"
+          fi
+          [ -n "$top_line" ] && top_line+=" · "
+          top_line+="$short $(fmt_cost "$c")"
+        done <<< "$top"
+        [ -n "$top_line" ] && usage_lines+=("$top_line")
+      fi
+    fi
+  fi
+fi
+
+if [ ${#usage_lines[@]} -gt 0 ]; then
+  msg+=$'\n'"💰 claude code"$'\n'
+  for line in "${usage_lines[@]}"; do
+    msg+="$line"$'\n'
+  done
+fi
+
 if [ "${DRY_RUN:-0}" = "1" ]; then
   echo "=== DRY-RUN: would POST to Telegram ==="
   echo "$msg"

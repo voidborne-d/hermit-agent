@@ -170,6 +170,27 @@ The CLI automatically installs a `launchd` coordinator the first time you run it
 - To disable: `launchctl unload ~/Library/LaunchAgents/com.hermit-agent.<coordinator>.status-reporter.plist`.
 - To hand off to a different coordinator: unload the old plist, delete it, re-run `create-hermit-agent` from a new agent (or manually `cp launchd/status-reporter.plist ~/Library/LaunchAgents/com.hermit-agent.<new>.status-reporter.plist && launchctl load ...`).
 
+### Claude Code usage block
+
+Each digest also carries a 💰 section summarizing your Claude Code spend:
+
+```
+💰 claude code
+5h: 18% (resets 7:20am)
+week: 14% (resets May 3)
+block: $25 · burn $25/h · proj $112 (3h29m left)
+today: $145 / 227.5M tok
+humanize $84 · d $31 · auramate-engineer $17
+```
+
+Three independent data sources, each fails silently:
+
+- **5h + weekly quota %** — there's no `claude --status --json` flag, so `scripts/claude-quota-probe.sh` spawns a throwaway Claude Code REPL in `/tmp/_quota_probe`, drives `/status` → Usage tab via `tmux send-keys`, scrapes the rendered pane, and tears everything down. ~8s per probe; the JSONL transcript Claude Code creates has zero API calls and is deleted right after capture, so it never lands in `ccusage` totals.
+- **Active 5h block burn rate + projection** — `npx ccusage blocks --active --json`, parsed for `costUSD`, `burnRate.costPerHour`, `projection.totalCost`, `projection.remainingMinutes`.
+- **Today's per-project cost + tokens + top 3 spenders** — `npx ccusage daily --since <today> -i --json`, summed across all `~/.claude/projects/<encoded-cwd>/` transcripts.
+
+Override the probed `claude` binary with `CLAUDE_BIN=/path/to/claude` in the LaunchAgent env if you have multiple installs. Skip the section entirely by removing or chmod-ing `claude-quota-probe.sh` to non-executable — the report falls back gracefully.
+
 ---
 
 ## Troubleshooting
