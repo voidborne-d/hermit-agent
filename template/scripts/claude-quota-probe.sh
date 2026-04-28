@@ -13,6 +13,12 @@
 # fresh REPL each cycle keeps existing active agents undisturbed.
 
 set -u
+# launchd's Aqua session ships a tiny default PATH (/usr/bin:/bin:/usr/sbin:/sbin)
+# and `claude` is usually installed at ~/.local/bin/claude (see Claude Code's
+# install-script default). Without this prepend, `command -v claude` returns
+# nothing under launchd and the probe silently degrades — only the ccusage
+# section comes through, the 5h/weekly quota lines disappear.
+export PATH=$HOME/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:$PATH
 
 PROBE_DIR="${PROBE_DIR:-/tmp/_quota_probe}"
 # Claude Code encodes the cwd into the projects dir; /private/tmp/_quota_probe

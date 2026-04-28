@@ -23,7 +23,7 @@
 #   DRY_RUN=1    — print the digest instead of pushing to Telegram
 
 set -u
-export PATH=/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:$PATH
+export PATH=$HOME/.local/bin:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:$PATH
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HUB_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

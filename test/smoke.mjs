@@ -261,6 +261,20 @@ const checks = [
         && s.includes('ccusage')
         && s.includes('usage_lines');
     })()],
+  // launchd default PATH is /usr/bin:/bin:/usr/sbin:/sbin and the Claude Code
+  // installer puts the binary at ~/.local/bin/claude, so both scripts need to
+  // prepend that explicitly or the probe silently fails (issue caught on a
+  // fresh hermit install at v0.1.26).
+  ['multi-agent-status-report.sh PATH includes ~/.local/bin',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      return /export PATH=\$HOME\/\.local\/bin:/.test(s);
+    })()],
+  ['claude-quota-probe.sh PATH includes ~/.local/bin',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/claude-quota-probe.sh'), 'utf8');
+      return /export PATH=\$HOME\/\.local\/bin:/.test(s);
+    })()],
 ];
 
 let pass = 0, fail = 0;
