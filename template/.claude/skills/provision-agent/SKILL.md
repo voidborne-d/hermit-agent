@@ -96,6 +96,23 @@ Mission: triage GitHub notifications, flag anything from maintainers of
 repos I star.
 ```
 
+## Scope — per-agent vs host-wide infrastructure
+
+The CLI scaffolds **per-agent artifacts**. Don't try to replicate **host-wide infrastructure** into every new agent — pick a single coordinator (by convention the first hermit on the box, usually `asst`) and keep those things there only.
+
+**Centralize in the coordinator, do NOT duplicate per-agent:**
+- LaunchAgents that should fire once per machine, not once per agent. The 10-min status digest (`com.hermit-agent.<coordinator>.status-reporter.plist`) is the canonical example — the CLI already detects an existing `com.hermit-agent.*.status-reporter.plist` and skips installing another, but anything *you* add (disk monitors, log rotation, queue drainers) needs the same discipline.
+- Cross-agent watchdogs and aggregators. `scripts/multi-agent-status-report.sh` already scans `../*/` and reports on every sibling; running a copy in each agent would N-multiply the work and spam the digest.
+- Shared lockfiles, global cron jobs, anything that would create N copies of one logical resource if run from each agent.
+
+**OK per-agent** (the CLI handles these correctly):
+- `restart.sh`, `start.sh`, the agent's `tmux` session.
+- Image-safety hooks, Playwright + Chrome profile.
+- `HEARTBEAT.md`, the session-scoped cron skill (dies with the session).
+- The agent's own bot token + `~/.claude/channels/telegram-<name>/`.
+
+Heuristic: if the artifact watches **the host** ("/tmp filling up", "every running agent"), put it in the coordinator. If it watches **one agent's own state** (its tmux pane, its `agent.pid`), per-agent is fine. When in doubt, default to coordinator-only — it's easier to copy a script later than to deduplicate N copies after they've drifted.
+
 ## Hard rules — don't do these
 
 - **Don't bypass the CLI.** `npx create-hermit-agent` is the single source of truth. If scaffolding is broken, fix the CLI; never hand-roll the directory tree.
