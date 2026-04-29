@@ -12,7 +12,7 @@
 import { parseArgs } from 'node:util';
 import {
   existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync,
-  chmodSync, statSync,
+  chmodSync, statSync, symlinkSync,
 } from 'node:fs';
 import { join, resolve, dirname, basename, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -104,6 +104,7 @@ function parseCliArgs() {
         'user-id':    { type: 'string' },
         'persona':    { type: 'string' },
         'brave-key':  { type: 'string' },
+        'clone-of':   { type: 'string' },
         'yes':        { type: 'boolean', short: 'y', default: false },
         'help':       { type: 'boolean', short: 'h', default: false },
       },
@@ -114,22 +115,34 @@ function parseCliArgs() {
 
   if (args.values.help) {
     console.log(`
-Usage:  create-hermit-agent <name> [options]
+Usage:
+  create-hermit-agent <name> [options]                Fresh agent.
+  create-hermit-agent --clone-of <parent> [options]   Doppel of an existing agent.
 
 Arguments:
-  <name>                Folder name (relative to cwd) or absolute path.
+  <name>                Folder name (relative to cwd) or absolute path. Omit
+                        when --clone-of is used; the clone is auto-named.
 
 Options:
-  --bot-token <token>   Telegram bot token from @BotFather.
+  --bot-token <token>   Telegram bot token from @BotFather. Each agent (and
+                        each doppel) needs its own — never reuse.
   --user-id <chat-id>   Your Telegram user/chat id (from @userinfobot).
-  --persona "<line>"    One-line description of what this agent focuses on.
-  --brave-key <key>     (Optional) Brave Search API key.
+                        In clone mode, defaults to the parent's TELEGRAM_CHAT_ID.
+  --persona "<line>"    One-line description of focus. Ignored in clone mode
+                        (clones inherit the parent's persona via symlinked AGENTS.md).
+  --brave-key <key>     (Optional) Brave Search API key. Ignored in clone mode.
+  --clone-of <parent>   Create a doppel of an existing hermit. The clone shares
+                        the parent's workspace files via symlink but runs as
+                        its own session with its own bot. Auto-numbered as
+                        <parent>-doppel-N. <parent> can be a name (resolved as
+                        a sibling of cwd) or an absolute path.
   --yes, -y             Skip interactive prompts (requires the above).
   --help, -h            Show this message.
 
 Examples:
   create-hermit-agent my-agent
   create-hermit-agent my-agent -y --bot-token 123:ABC --user-id 1234567 --persona "triage my github notifications"
+  create-hermit-agent --clone-of asst -y --bot-token 456:DEF
 `);
     process.exit(0);
   }
@@ -496,6 +509,375 @@ function installStatusReporter(targetDir, agentName) {
   ok(`Status reporter loaded — ${agentName} is this machine's coordinator (cadence: 10 min).`);
 }
 
+// --- Clone (doppel) flow ---
+//
+// A doppel shares the parent agent's workspace files via symlinks (SOUL.md,
+// AGENTS.md, MEMORY.md, src/, scripts/, etc.) but runs as its own Claude Code
+// session, has its own bot, its own tmux pane, its own .claude/state. Used
+// when the user wants a parallel viewpoint on the same project.
+
+function resolveCloneParent(arg) {
+  // Accept either a name (resolved as sibling of cwd) or an absolute path.
+  const candidate = arg.startsWith('/')
+    ? arg
+    : resolve(process.cwd(), arg.includes('/') ? arg : `../${arg}`);
+
+  if (!existsSync(candidate)) {
+    die(`Parent agent not found at ${candidate}.\n  Pass --clone-of <name> for a sibling of cwd, or an absolute path.`);
+  }
+  if (!existsSync(join(candidate, 'CLAUDE.md'))) {
+    die(`${candidate} does not look like a hermit agent (no CLAUDE.md).`);
+  }
+  return candidate;
+}
+
+function nextDoppelNumber(parentDir) {
+  // Existing doppels of this parent live next to it as <basename>-doppel-N.
+  const parentBase = basename(parentDir);
+  const siblingDir = dirname(parentDir);
+  let max = 0;
+  try {
+    for (const entry of readdirSync(siblingDir)) {
+      const m = entry.match(new RegExp(`^${parentBase}-doppel-(\\d+)$`));
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > max) max = n;
+      }
+    }
+  } catch {}
+  return max + 1;
+}
+
+function readParentChatId(parentDir) {
+  // Try to read TELEGRAM_CHAT_ID out of the parent's settings.local.json so
+  // the user can omit --user-id in clone mode (most clones go to the same chat).
+  try {
+    const raw = readFileSync(join(parentDir, '.claude', 'settings.local.json'), 'utf8');
+    const cfg = JSON.parse(raw);
+    return cfg?.env?.TELEGRAM_CHAT_ID || null;
+  } catch {
+    return null;
+  }
+}
+
+function symlinkIfExists(parentDir, cloneDir, rel, parentBaseName) {
+  // Build the relative symlink target so the link survives moves of the
+  // whole tree. From cloneDir/<rel> the target is ../<parentBase>/<rel>.
+  const src = join(parentDir, rel);
+  if (!existsSync(src)) return;
+  const dest = join(cloneDir, rel);
+  // Make sure the destination's parent dir exists (for nested rel like .claude/skills).
+  mkdirSync(dirname(dest), { recursive: true });
+  // Compute the relative target depth: every '/' in rel adds one '../'.
+  const depth = rel.split('/').length;
+  const upDots = '../'.repeat(depth);
+  const target = `${upDots}${parentBaseName}/${rel}`;
+  symlinkSync(target, dest);
+}
+
+async function collectCloneAnswers(values, parentDir) {
+  const parentBase = basename(parentDir);
+  const siblingDir = dirname(parentDir);
+  const n = nextDoppelNumber(parentDir);
+  const cloneName = `${parentBase}-doppel-${n}`;
+  const cloneDir = join(siblingDir, cloneName);
+
+  if (existsSync(cloneDir)) {
+    die(`Computed clone path already exists: ${cloneDir}\n  Should never happen unless something raced. Delete it or pick a higher N manually.`);
+  }
+
+  // Bot token (required, prompt if missing).
+  let botToken = values['bot-token'];
+  if (!botToken) {
+    if (values.yes) die('--bot-token required with --yes');
+    const r = await prompts({
+      type: 'password',
+      name: 'token',
+      message: `Telegram bot token for the new doppel (separate bot from ${parentBase}'s)`,
+      validate: (v) => (v && /^[0-9]+:[A-Za-z0-9_-]{30,}$/.test(v.trim())) ? true : 'Looks malformed — expected 123456789:ABCdef…',
+    });
+    if (!r.token) process.exit(1);
+    botToken = r.token.trim();
+  }
+  botToken = botToken.trim();
+
+  step('Verifying bot token against Telegram…');
+  const bot = await validateBotToken(botToken);
+  if (!bot) {
+    die('Telegram rejected the token (bot not found or network error). Check it and try again.');
+  }
+  ok(`Bot verified: @${bot.username} (${bot.first_name})`);
+
+  // User chat id (defaults to parent's TELEGRAM_CHAT_ID).
+  let userId = values['user-id'];
+  if (!userId) {
+    const inherited = readParentChatId(parentDir);
+    if (inherited) {
+      userId = inherited;
+      ok(`Using parent's TELEGRAM_CHAT_ID: ${userId}`);
+    } else if (values.yes) {
+      die('--user-id required (parent has no TELEGRAM_CHAT_ID to inherit)');
+    } else {
+      const r = await prompts({
+        type: 'text',
+        name: 'userId',
+        message: 'Your Telegram user ID',
+        validate: (v) => (v && /^-?[0-9]+$/.test(v.trim())) ? true : 'Expected a numeric ID (e.g. 123456789)',
+      });
+      if (!r.userId) process.exit(1);
+      userId = r.userId.trim();
+    }
+  }
+  userId = String(userId).trim();
+
+  const stateDir = join(homedir(), '.claude', 'channels', `telegram-${cloneName}`);
+
+  return {
+    parentDir,
+    parentBase,
+    cloneName,
+    cloneDir,
+    n,
+    botToken,
+    botUsername: bot.username,
+    userTgId: userId,
+    stateDir,
+  };
+}
+
+function writeCloneRealFiles(c, claudeBin) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  // IDENTITY.md — clone identity, overrides the parent's via real-file precedence.
+  writeFileSync(join(c.cloneDir, 'IDENTITY.md'), `# IDENTITY.md - Who Am I?
+
+- **Name:** ${c.cloneName}
+- **Origin:** I'm a doppel (复制体) of \`${c.parentBase}\`. We share the same workspace files (SOUL/USER/AGENTS/TOOLS/MEMORY are symlinks to ../${c.parentBase}/), but our Claude Code sessions are separate and we route through different Telegram bots.
+- **Vibe:** Same project context as ${c.parentBase}, fresh perspective on the same files.
+- **Avatar:**
+
+---
+
+I greet via my own Telegram bot — ${c.parentBase} does not see my conversations and I do not see theirs.
+
+Per-clone files (real, not symlinks): this IDENTITY.md, BOOTSTRAP.md, HEARTBEAT.md, .claude/settings.local.json + state/.
+
+Daily log convention: I write to \`memory/${today}-doppel-${c.n}.md\` (note the suffix). ${c.parentBase} writes to \`memory/${today}.md\` (no suffix). We can read each other's logs.
+
+Shared memory write discipline: see BOOTSTRAP.md.
+`);
+
+  // BOOTSTRAP.md — first-run discipline, deleted by AGENTS.md rule after first turn.
+  writeFileSync(join(c.cloneDir, 'BOOTSTRAP.md'), `# BOOTSTRAP.md - First Run
+
+You are a doppel — a clone of the parent agent \`${c.parentBase}\`. You share the parent's workspace via symlinks but run as your own session with your own Telegram bot.
+
+## Shared vs per-clone
+
+**Symlinked from \`../${c.parentBase}/\` (read-shared):**
+- CLAUDE.md, SOUL.md, USER.md, AGENTS.md, TOOLS.md, MEMORY.md
+- memory/ (daily logs dir)
+- scripts/, .claude/skills/, browser/, node_modules/
+
+**Per-clone real files (yours alone):**
+- IDENTITY.md (your clone identity)
+- HEARTBEAT.md (your task list)
+- .claude/settings.json, .claude/settings.local.json, .claude/state/
+- restart.sh, agent.pid
+
+## Long-term memory — write discipline
+
+\`MEMORY.md\` is symlinked to \`../${c.parentBase}/MEMORY.md\`. The parent writes to it; other doppels of \`${c.parentBase}\` may also write to it. There is **no atomic locking**, so concurrent appends from multiple sessions can lose writes.
+
+Default rule: **MEMORY.md is read-only for you.**
+
+If you discover something genuinely worth long-term memory:
+1. **Prefer**: write only to your daily log \`memory/YYYY-MM-DD-doppel-${c.n}.md\`. The parent and other doppels can read it.
+2. **If you must update MEMORY.md**: \`cat\` the latest version right before editing (don't trust any earlier read), make the smallest possible append, save. Keep the read→write window short.
+3. **Never** restructure or rewrite MEMORY.md — only append to the appropriate section.
+
+## Daily log
+
+Write daily entries to \`memory/YYYY-MM-DD-doppel-${c.n}.md\` (suffixed). The parent uses the un-suffixed file. Both files live in the shared memory/ directory.
+
+## Auto-delete
+
+Per AGENTS.md ("If BOOTSTRAP.md exists, follow it, then delete it"), delete this file after your first turn so it doesn't keep being processed on future bootstraps. Your clone identity carries forward in IDENTITY.md.
+`);
+
+  // HEARTBEAT.md — empty per-clone task list.
+  writeFileSync(join(c.cloneDir, 'HEARTBEAT.md'), `# HEARTBEAT.md - Tasks for ${c.cloneName}
+
+_Empty by default. The user adds tasks here when they want this doppel to focus on something specific._
+
+`);
+
+  // .claude/settings.json — per-clone, enables telegram plugin.
+  mkdirSync(join(c.cloneDir, '.claude', 'state'), { recursive: true });
+  writeFileSync(join(c.cloneDir, '.claude', 'settings.json'), JSON.stringify({
+    permissions: { allow: [], deny: [] },
+    enabledPlugins: { 'telegram@claude-plugins-official': true },
+  }, null, 2) + '\n');
+
+  // .claude/settings.local.json — per-clone bot token + STATE_DIR.
+  // Hooks point at this clone's scripts/ symlink (which leads to parent's).
+  const settingsLocal = {
+    env: {
+      TELEGRAM_BOT_TOKEN: c.botToken,
+      TELEGRAM_STATE_DIR: c.stateDir,
+      TELEGRAM_CHAT_ID: c.userTgId,
+    },
+    hooks: {
+      UserPromptSubmit: [{ hooks: [
+        { type: 'command', command: `${c.cloneDir}/scripts/hook-session-state.sh` },
+      ]}],
+      Stop: [{ hooks: [
+        { type: 'command', command: `${c.cloneDir}/scripts/hook-context-report.sh` },
+        { type: 'command', command: `${c.cloneDir}/scripts/hook-session-state.sh` },
+      ]}],
+      PreToolUse: [{ hooks: [
+        { type: 'command', command: `${c.cloneDir}/scripts/hook-tool-activity.sh` },
+        { type: 'command', command: `${c.cloneDir}/scripts/hook-session-state.sh` },
+      ]}],
+    },
+  };
+  const settingsLocalPath = join(c.cloneDir, '.claude', 'settings.local.json');
+  writeFileSync(settingsLocalPath, JSON.stringify(settingsLocal, null, 2) + '\n', { mode: 0o600 });
+  chmodSync(settingsLocalPath, 0o600);
+
+  // restart.sh — per-clone, knows its tmux session name.
+  const restartSh = `#!/bin/bash
+# Restart Claude Code agent in this directory
+# Usage: ./restart.sh <old_pid>
+
+OLD_PID="$1"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+SESSION="claude-${c.cloneName}"
+LOG="$DIR/restart.log"
+
+echo "[$(date)] Restart initiated, old PID=$OLD_PID" >> "$LOG"
+
+sleep 3
+
+if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+  kill "$OLD_PID"
+  for i in $(seq 1 10); do
+    kill -0 "$OLD_PID" 2>/dev/null || break
+    sleep 1
+  done
+  kill -0 "$OLD_PID" 2>/dev/null && kill -9 "$OLD_PID"
+  echo "[$(date)] Old process killed" >> "$LOG"
+fi
+
+sleep 2
+
+CMD="cd $DIR && ${claudeBin} --dangerously-skip-permissions --channels plugin:telegram@claude-plugins-official"
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  tmux respawn-pane -t "$SESSION" -k "$CMD"
+else
+  tmux new-session -d -s "$SESSION" -x 200 -y 50 "$CMD"
+fi
+
+sleep 4
+PANE_PID=$(tmux display -p -t "$SESSION" '#{pane_pid}' 2>/dev/null)
+NEW_PID=""
+if [ -n "$PANE_PID" ]; then
+  if ps -p "$PANE_PID" -o command= 2>/dev/null | grep -q '/claude'; then
+    NEW_PID="$PANE_PID"
+  else
+    NEW_PID=$(pgrep -P "$PANE_PID" -n -f '/claude' 2>/dev/null)
+  fi
+fi
+[ -n "$NEW_PID" ] && echo "$NEW_PID" > "$DIR/agent.pid"
+echo "[$(date)] New PID=$NEW_PID" >> "$LOG"
+`;
+  const restartPath = join(c.cloneDir, 'restart.sh');
+  writeFileSync(restartPath, restartSh);
+  chmodSync(restartPath, 0o755);
+}
+
+async function runCloneFlow(values, cloneOf, prereqs) {
+  const parentDir = resolveCloneParent(cloneOf);
+  const c = await collectCloneAnswers(values, parentDir);
+
+  console.log('');
+  console.log(bold('Plan (clone):'));
+  console.log(`  Parent      : ${c.parentBase} (${c.parentDir})`);
+  console.log(`  Clone       : ${c.cloneName}`);
+  console.log(`  Bot         : @${c.botUsername}`);
+  console.log(`  Target dir  : ${c.cloneDir}`);
+  console.log(`  State dir   : ${c.stateDir}`);
+  console.log('');
+
+  if (!values.yes) {
+    const { go } = await prompts({
+      type: 'confirm',
+      name: 'go',
+      message: 'Proceed?',
+      initial: true,
+    });
+    if (!go) {
+      console.log(dim('Aborted.'));
+      process.exit(0);
+    }
+  }
+
+  // 1. Create clone dir tree.
+  step(`Creating clone directory: ${c.cloneDir}`);
+  mkdirSync(c.cloneDir, { recursive: true });
+
+  // 2. Symlink shared markdown + workspace dirs from parent.
+  step(`Linking shared files from ${c.parentBase}…`);
+  for (const f of ['CLAUDE.md', 'SOUL.md', 'USER.md', 'AGENTS.md', 'TOOLS.md',
+                   'MEMORY.md', 'ACCOUNTS.md', 'FIRST_RUN.md']) {
+    symlinkIfExists(c.parentDir, c.cloneDir, f, c.parentBase);
+  }
+  for (const d of ['memory', 'scripts', 'browser', 'node_modules', 'projects',
+                   'src', 'code']) {
+    symlinkIfExists(c.parentDir, c.cloneDir, d, c.parentBase);
+  }
+  // Skills dir symlink — clones share parent's skills (but get their own settings).
+  if (existsSync(join(c.parentDir, '.claude', 'skills'))) {
+    mkdirSync(join(c.cloneDir, '.claude'), { recursive: true });
+    symlinkSync(`../../${c.parentBase}/.claude/skills`, join(c.cloneDir, '.claude', 'skills'));
+  }
+  ok('Symlinks in place.');
+
+  // 3. Per-clone real files (IDENTITY/BOOTSTRAP/HEARTBEAT/restart.sh/.claude/*).
+  step('Writing per-clone files…');
+  writeCloneRealFiles(c, prereqs.claude);
+  ok('Per-clone files written.');
+
+  // 4. State dir + .env + access.json (mode 600).
+  writeStateDir(c.stateDir, c.botToken, c.userTgId);
+
+  // 5. Plugin install at project scope (clone's project entry, not parent's).
+  installTelegramPlugin(prereqs.claude, c.cloneDir);
+
+  // 6. Pre-ack first-run dialogs for this new project path.
+  preAcknowledgeClaudeDialogs(c.cloneDir);
+
+  // 7. Skip status-reporter install — coordinator already exists (parent or
+  //    a sibling installed it). The CLI's installer is idempotent and would
+  //    skip anyway, but we don't bother calling it.
+  // 8. Skip npm install — node_modules is symlinked from the parent.
+
+  console.log('');
+  console.log(green(bold('✓ Doppel ready.')));
+  console.log('');
+  console.log(bold('Next steps:'));
+  console.log(`  1. Start it:`);
+  console.log(`       cd ${relative(process.cwd(), c.cloneDir) || '.'}`);
+  console.log(`       ./restart.sh ""`);
+  console.log('');
+  console.log(`  2. DM @${c.botUsername} to wake them. The parent (${c.parentBase}) is unaware of this conversation.`);
+  console.log('');
+  console.log(`  3. Watch the session:`);
+  console.log(`       tmux attach -t claude-${c.cloneName}    ${dim('(detach: Ctrl-b d)')}`);
+  console.log('');
+}
+
 // --- Make all .sh executable ---
 
 function chmodScripts(targetDir) {
@@ -531,6 +913,17 @@ async function main() {
   const prereqs = checkPrereqs();
 
   const cli = parseCliArgs();
+
+  // Clone mode: skip the fresh-agent flow entirely. Symlink-based provisioning
+  // off an existing parent.
+  if (cli.values['clone-of']) {
+    if (cli.positionals[0]) {
+      die('Pass either a <name> for a fresh agent or --clone-of <parent> for a doppel — not both.');
+    }
+    await runCloneFlow(cli.values, cli.values['clone-of'], prereqs);
+    return;
+  }
+
   const positional = cli.positionals[0];
   const answers = await collectAnswers(cli.values, positional);
 

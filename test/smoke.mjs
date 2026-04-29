@@ -275,6 +275,15 @@ const checks = [
       const s = readFileSync(join(TARGET, 'scripts/claude-quota-probe.sh'), 'utf8');
       return /export PATH=\$HOME\/\.local\/bin:/.test(s);
     })()],
+  ['provision-clone skill exists with npx flow',
+    (() => {
+      const p = join(TARGET, '.claude/skills/provision-clone/SKILL.md');
+      if (!existsSync(p)) return false;
+      const s = readFileSync(p, 'utf8');
+      return s.includes('npx create-hermit-agent --clone-of')
+        && s.includes('doppel')
+        && s.includes('symlink');
+    })()],
 ];
 
 let pass = 0, fail = 0;
