@@ -161,6 +161,28 @@ Writing the plist alone does NOT activate it — `launchd-sync.sh` is the differ
 
 ---
 
+## Master vs worker hermits
+
+Each machine has exactly one **master** hermit and any number of **workers**:
+
+- **Master** — the first hermit installed on the machine (typically named `asst`). It owns the multi-agent status digest LaunchAgent, hosts the `provision-agent` and `provision-clone` skills the user invokes from Telegram, and is the single coordinator that watches every other hermit's pid + state. Created by `npx create-hermit-agent <name>` when no other hermit exists on the box.
+
+- **Worker** — every hermit created after the master, whether via `npx create-hermit-agent <name>` (fresh worker) or `npx create-hermit-agent --clone-of <parent>` (doppel of an existing hermit). Workers run their own Claude Code session and their own Telegram bot, but they do not install a status-reporter LaunchAgent and they do not provision other hermits — only the master does that.
+
+The master/worker split is enforced by the CLI: if a `com.hermit-agent.*.status-reporter.plist` already exists on the machine, the installer skips registering another. So you can't accidentally create a second master, even if you forget the rule. Doppels (`--clone-of`) skip the LaunchAgent step entirely and are always workers.
+
+The CLI prints which role each new hermit takes when it finishes scaffolding:
+
+```
+✓ Master hermit ready (this Mac's coordinator).      ← first install
+✓ Worker hermit ready (master / coordinator: asst).  ← subsequent installs
+✓ Doppel ready (worker hermit, master: asst).        ← --clone-of
+```
+
+To hand off mastership to a different hermit, see *Multi-agent status digest* below.
+
+---
+
 ## Multi-agent status digest
 
 The CLI automatically installs a `launchd` coordinator the first time you run it on a machine. Every 10 minutes it pushes a digest of all hermits on the box to the coordinator's Telegram chat: 🟢 idle · 🟨 running · 🟥 stuck · ⚫ down.

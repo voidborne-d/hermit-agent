@@ -459,6 +459,10 @@ function preAcknowledgeClaudeDialogs(targetDir) {
 // Subsequent hermits detect the existing plist and skip — otherwise every
 // agent would fire its own digest and flood Telegram.
 
+// Returns one of:
+//   { role: 'master', coordinator: <agentName> }     installed status-reporter
+//   { role: 'worker', coordinator: <other-name> }    skipped — coordinator exists
+//   { role: 'worker', coordinator: null }            skipped — plist missing or load failed
 function installStatusReporter(targetDir, agentName) {
   step('Installing multi-agent status reporter LaunchAgent…');
 
@@ -474,14 +478,16 @@ function installStatusReporter(targetDir, agentName) {
     existing = [];
   }
   if (existing.length > 0) {
-    ok(`Status reporter already installed by a sibling (${existing[0]}). Skipping — only one coordinator per machine.`);
-    return;
+    const m = existing[0].match(/^com\.hermit-agent\.(.+)\.status-reporter\.plist$/);
+    const coordinator = m ? m[1] : null;
+    ok(`Status reporter already installed by ${coordinator || 'a sibling'} — this hermit will be a worker (the master is ${coordinator}).`);
+    return { role: 'worker', coordinator };
   }
 
   const srcPlist = join(targetDir, 'launchd', 'status-reporter.plist');
   if (!existsSync(srcPlist)) {
     warn(`launchd/status-reporter.plist missing from scaffold — skipping LaunchAgent install.`);
-    return;
+    return { role: 'worker', coordinator: null };
   }
 
   // The coordinator writes a log; make sure its parent dir exists so launchd
@@ -494,7 +500,7 @@ function installStatusReporter(targetDir, agentName) {
     chmodSync(destPlist, 0o644);
   } catch (e) {
     warn(`Could not copy plist to ${destPlist}: ${e.message}\n  Install manually later: cp ${srcPlist} ${destPlist} && launchctl load ${destPlist}`);
-    return;
+    return { role: 'worker', coordinator: null };
   }
 
   const r = spawnSync('launchctl', ['load', destPlist], {
@@ -504,9 +510,10 @@ function installStatusReporter(targetDir, agentName) {
   if (r.status !== 0) {
     warn(`launchctl load exited ${r.status}. Output: ${(r.stderr || r.stdout || '').trim()}`);
     warn(`You can retry manually: launchctl load ${destPlist}`);
-    return;
+    return { role: 'worker', coordinator: null };
   }
-  ok(`Status reporter loaded — ${agentName} is this machine's coordinator (cadence: 10 min).`);
+  ok(`Status reporter loaded — ${agentName} is this machine's MASTER (the coordinator). Cadence: 10 min.`);
+  return { role: 'master', coordinator: agentName };
 }
 
 // --- Clone (doppel) flow ---
@@ -864,7 +871,8 @@ async function runCloneFlow(values, cloneOf, prereqs) {
   // 8. Skip npm install — node_modules is symlinked from the parent.
 
   console.log('');
-  console.log(green(bold('✓ Doppel ready.')));
+  console.log(green(bold(`✓ Doppel ready (worker hermit, master / coordinator: ${c.parentBase} or its own master).`)));
+  console.log(dim('   Doppels are always workers — they share the parent\'s workspace but never replace the master.'));
   console.log('');
   console.log(bold('Next steps:'));
   console.log(`  1. Start it:`);
@@ -981,12 +989,20 @@ async function main() {
   preAcknowledgeClaudeDialogs(answers.targetDir);
 
   // 6. Install multi-agent status reporter LaunchAgent (idempotent, one per machine)
-  installStatusReporter(answers.targetDir, answers.agentName);
+  const role = installStatusReporter(answers.targetDir, answers.agentName);
 
-  // 6. Final printout
+  // 6. Final printout — distinguish master (coordinator) from worker.
   const tmuxSession = `claude-${answers.agentName}`;
   console.log('');
-  console.log(green(bold('✓ Agent ready.')));
+  if (role.role === 'master') {
+    console.log(green(bold(`✓ Master hermit ready (this Mac's coordinator).`)));
+    console.log(dim('   Future hermits on this machine will be workers — only the master runs the multi-agent status digest.'));
+  } else if (role.coordinator) {
+    console.log(green(bold(`✓ Worker hermit ready (master / coordinator: ${role.coordinator}).`)));
+  } else {
+    console.log(green(bold(`✓ Worker hermit ready.`)));
+    console.log(dim('   No master detected on this machine. Install the LaunchAgent manually if you want a coordinator.'));
+  }
   console.log('');
   console.log(bold('Next steps:'));
   console.log(`  1. Start it:`);

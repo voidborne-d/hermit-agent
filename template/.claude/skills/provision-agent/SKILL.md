@@ -6,7 +6,11 @@ user_invocable: true
 
 # Provision a New Hermit (asst spawns siblings)
 
-Your user runs `npx create-hermit-agent` **once** to bootstrap you — the default agent is called **asst**. Every additional hermit they need, they ask *you* for via Telegram. This skill handles that request end-to-end.
+Your user runs `npx create-hermit-agent` **once** to bootstrap you — the default agent is called **asst**. That first hermit becomes the **master** of this machine: it owns the multi-agent status digest LaunchAgent and is where the user spawns new hermits from.
+
+Every additional hermit you provision via this skill is a **worker**. Workers don't run the digest, don't watch each other, and don't take over from the master. The CLI enforces this — if a `com.hermit-agent.*.status-reporter.plist` already exists, the install skips registering another. You cannot accidentally create a second master from this skill.
+
+Every additional hermit the user needs, they ask *you* (the master) for via Telegram. This skill handles that request end-to-end.
 
 ## The flow at a glance
 

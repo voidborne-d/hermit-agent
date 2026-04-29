@@ -284,6 +284,16 @@ const checks = [
         && s.includes('doppel')
         && s.includes('symlink');
     })()],
+  ['provision-agent skill names master/worker roles',
+    (() => {
+      const s = readFileSync(join(TARGET, '.claude/skills/provision-agent/SKILL.md'), 'utf8');
+      return s.includes('master') && s.includes('worker');
+    })()],
+  ['provision-clone skill names master/worker roles',
+    (() => {
+      const s = readFileSync(join(TARGET, '.claude/skills/provision-clone/SKILL.md'), 'utf8');
+      return s.includes('Doppels are always') && s.includes('workers');
+    })()],
 ];
 
 let pass = 0, fail = 0;

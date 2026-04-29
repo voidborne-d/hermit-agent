@@ -10,6 +10,8 @@ A **doppel** shares the parent agent's workspace via symlinks (SOUL/USER/AGENTS/
 
 If the user wants a **brand-new agent** with its own workspace, use `provision-agent` (npx create-hermit-agent without `--clone-of`) instead.
 
+**Master vs worker rule.** Doppels are always **workers** — never masters. The master of this machine is the first hermit installed (typically `asst`), which owns the status-reporter LaunchAgent. The CLI's `--clone-of` mode skips that LaunchAgent entirely, so you can't accidentally spawn a second master via this skill. A worker can be a clone of the master, of another worker, or of another doppel's parent — the relationship that matters is workspace inheritance, not master/worker hierarchy.
+
 ## Concept
 
 ```
