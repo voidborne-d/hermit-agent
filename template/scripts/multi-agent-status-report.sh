@@ -67,7 +67,11 @@ pane_state_check() {
   local pane
   pane=$(tmux capture-pane -t "$session" -p 2>/dev/null)
   [ -z "$pane" ] && { echo "unknown"; return; }
-  if echo "$pane" | tail -6 | grep -qE "^[[:space:]]*[✻✢][[:space:]]+(Churn|Cook|Brew|Work|Think|Compact|Running|Saut|Crunch|Actualiz|Cogit|Ponder|Simmer|Processing|Stew|Grilling|Bak|Roast|Digest)"; then
+  # Reject completion summaries like "✻ Brewed for 2m 11s" — they share the
+  # verb prefix with the active form ("Brewing") and would false-positive as
+  # churning, defeating the self-heal path. The "for [0-9]" anchor matches the
+  # duration tail Claude Code prints after a turn finishes.
+  if echo "$pane" | tail -6 | grep -E "^[[:space:]]*[✻✢][[:space:]]+(Churn|Cook|Brew|Work|Think|Compact|Running|Saut|Crunch|Actualiz|Cogit|Ponder|Simmer|Processing|Stew|Grilling|Bak|Roast|Digest)" | grep -qvE " for [0-9]+"; then
     echo "churning"
     return
   fi
