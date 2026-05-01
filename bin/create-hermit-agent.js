@@ -12,7 +12,7 @@
 import { parseArgs } from 'node:util';
 import {
   existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync,
-  chmodSync, statSync, symlinkSync,
+  chmodSync, statSync, symlinkSync, rmSync,
 } from 'node:fs';
 import { join, resolve, dirname, basename, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,12 +25,31 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = resolve(__dirname, '..');
 const TEMPLATE_DIR = join(PACKAGE_DIR, 'template');
 
+const PLATFORM = platform();
+const IS_DARWIN = PLATFORM === 'darwin';
+const IS_LINUX = PLATFORM === 'linux';
+
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
 const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 const blue = (s) => `\x1b[34m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
+
+// Distro-aware install hint for missing prereqs. macOS users still see
+// `brew install`; Linux users see the right `apt`/`dnf`/`pacman`/`apk`
+// invocation for their box. Falls back to a generic hint on unknown systems.
+function installHint(pkg) {
+  if (IS_DARWIN) return `brew install ${pkg}`;
+  if (IS_LINUX) {
+    if (existsSync('/usr/bin/apt-get') || existsSync('/usr/bin/apt')) return `sudo apt install ${pkg}`;
+    if (existsSync('/usr/bin/dnf')) return `sudo dnf install ${pkg}`;
+    if (existsSync('/usr/bin/yum')) return `sudo yum install ${pkg}`;
+    if (existsSync('/usr/bin/pacman')) return `sudo pacman -S ${pkg}`;
+    if (existsSync('/sbin/apk')) return `sudo apk add ${pkg}`;
+  }
+  return `(use your package manager to install) ${pkg}`;
+}
 
 function die(msg) {
   console.error(red('✖ ') + msg);
@@ -52,8 +71,8 @@ function warn(msg) {
 // --- Prerequisite checks ---
 
 function checkPrereqs() {
-  if (platform() !== 'darwin') {
-    die('Hermit Agent currently supports macOS only. (Linux/Windows support welcome as contributions — see README.)');
+  if (!IS_DARWIN && !IS_LINUX) {
+    die(`Hermit Agent supports macOS and Linux. ${PLATFORM} is not supported (yet — PRs welcome).`);
   }
 
   const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
@@ -73,7 +92,15 @@ function checkPrereqs() {
 
   const tmux = which('tmux');
   if (!tmux) {
-    die('tmux not found on PATH.\n  Install with: brew install tmux');
+    die(`tmux not found on PATH.\n  Install with: ${installHint('tmux')}`);
+  }
+
+  // curl is used both for token validation (HTTPS_PROXY-aware, see
+  // validateBotToken) and the cron `-p` Bot API push path documented in
+  // AGENTS.md. Treat as an explicit prereq.
+  const curl = which('curl');
+  if (!curl) {
+    die(`curl not found on PATH.\n  Install with: ${installHint('curl')}`);
   }
 
   const bunPath = which('bun') || (existsSync(`${homedir()}/.bun/bin/bun`) ? `${homedir()}/.bun/bin/bun` : null);
@@ -85,7 +112,25 @@ function checkPrereqs() {
 
   const jq = which('jq');
   if (!jq) {
-    warn('jq not found. Hooks and status scripts use jq. Install with: brew install jq');
+    warn(`jq not found. Hooks and status scripts use jq. Install with: ${installHint('jq')}`);
+  }
+
+  // Linux uses systemd --user for the scheduling layer (instead of launchd).
+  // Warn if the user manager isn't reachable from this shell — without it,
+  // installStatusReporter() and per-agent cron timers can't be activated.
+  // On a typical Linux server, this is fixed once with `loginctl enable-linger
+  // $USER`; on most desktop distros it works out of the box.
+  if (IS_LINUX) {
+    const systemctl = which('systemctl');
+    if (!systemctl) {
+      warn(`systemctl not found. Hermit's Linux scheduling uses systemd --user. Install with: ${installHint('systemd')}`);
+    } else {
+      const r = spawnSync('systemctl', ['--user', 'show-environment'], { encoding: 'utf8' });
+      if (r.status !== 0) {
+        warn('systemd --user not reachable from this shell. The scheduling layer (status reporter, cron timers) will fail to install.');
+        warn('On a server, run once (may need sudo): loginctl enable-linger $USER');
+      }
+    }
   }
 
   return { claude, tmux, bun: bunPath, jq };
@@ -151,16 +196,36 @@ Examples:
 }
 
 // --- Telegram ---
+//
+// We shell out to curl rather than using Node's built-in fetch for token
+// validation:
+//  1. curl honors HTTPS_PROXY / https_proxy / NO_PROXY env vars by default;
+//     Node's bundled undici needs explicit ProxyAgent dispatcher setup,
+//     which would cost a runtime dep. In any environment where outbound
+//     HTTPS goes through an HTTP proxy, fetch silently fails to resolve
+//     api.telegram.org while curl with the same env reaches it fine.
+//  2. curl is already an effective prereq — the agent's cron `-p` runs use
+//     it to push to the Bot API directly when MCP isn't available. We
+//     promote it to an explicit prereq above and reuse it here.
+//
+// On non-zero exit or unparseable body we return null and let the caller
+// die with the standard "Telegram rejected" message.
 
-async function validateBotToken(token) {
+function validateBotToken(token) {
+  const r = spawnSync('curl', [
+    '-sS', '-m', '12',
+    `https://api.telegram.org/bot${token}/getMe`,
+  ], { encoding: 'utf8' });
+  if (r.status !== 0 || !r.stdout) {
+    if (r.stderr) {
+      console.error(red('  curl: ') + r.stderr.trim());
+    }
+    return null;
+  }
   try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return null;
-    const body = await res.json();
+    const body = JSON.parse(r.stdout);
     return body.ok ? body.result : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -214,9 +279,9 @@ async function collectAnswers(values, positional) {
   botToken = botToken.trim();
 
   step('Verifying bot token against Telegram…');
-  const bot = await validateBotToken(botToken);
+  const bot = validateBotToken(botToken);
   if (!bot) {
-    die('Telegram rejected the token (bot not found or network error). Check it and try again.');
+    die('Telegram rejected the token (bot not found or network error). Check it and try again.\n  If your machine reaches the internet via an HTTP proxy, make sure HTTPS_PROXY / https_proxy is set in this shell — curl honors them automatically.');
   }
   ok(`Bot verified: @${bot.username} (${bot.first_name})`);
 
@@ -354,8 +419,22 @@ function writeStateDir(stateDir, botToken, userId) {
   step(`Writing state dir: ${stateDir}`);
   mkdirSync(stateDir, { recursive: true, mode: 0o700 });
 
+  // Plugin .env: bot token + (if set) the current shell's HTTP proxy vars.
+  // Claude Code drops HTTPS_PROXY / HTTP_PROXY / NO_PROXY from the env it
+  // hands to spawned plugin subprocesses (ALL_PROXY survives, but bun's
+  // fetch doesn't consume SOCKS-shaped ALL_PROXY). Without this the plugin's
+  // bun process can't long-poll Telegram on machines that need a proxy.
+  // server.ts reads .env with a "real env wins" precedence, so this is a
+  // safety net — if the user explicitly sets these in the runtime env, those
+  // win. We persist whatever lowercased / uppercased forms we see.
   const envPath = join(stateDir, '.env');
-  writeFileSync(envPath, `TELEGRAM_BOT_TOKEN=${botToken}\n`, { mode: 0o600 });
+  let envContent = `TELEGRAM_BOT_TOKEN=${botToken}\n`;
+  for (const k of ['HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY',
+                   'https_proxy', 'http_proxy', 'no_proxy']) {
+    const v = process.env[k];
+    if (v) envContent += `${k}=${v}\n`;
+  }
+  writeFileSync(envPath, envContent, { mode: 0o600 });
   chmodSync(envPath, 0o600);
   ok(`.env written at ${envPath} (mode 600)`);
 
@@ -452,18 +531,27 @@ function preAcknowledgeClaudeDialogs(targetDir) {
   }
 }
 
-// --- Multi-agent status reporter LaunchAgent ---
+// --- Multi-agent status reporter ---
 //
-// One-per-machine: the FIRST hermit installed on a Mac wires this up and
+// One-per-host: the FIRST hermit installed on a machine wires this up and
 // becomes the status coordinator (pushes a 🟢/🟨/🟥/⚫ digest every 10 min).
-// Subsequent hermits detect the existing plist and skip — otherwise every
+// Subsequent hermits detect the existing job and skip — otherwise every
 // agent would fire its own digest and flood Telegram.
+//
+// macOS uses launchd (LaunchAgent plist in ~/Library/LaunchAgents/).
+// Linux uses systemd --user (.service + .timer in ~/.config/systemd/user/).
 
 // Returns one of:
 //   { role: 'master', coordinator: <agentName> }     installed status-reporter
 //   { role: 'worker', coordinator: <other-name> }    skipped — coordinator exists
-//   { role: 'worker', coordinator: null }            skipped — plist missing or load failed
+//   { role: 'worker', coordinator: null }            skipped — files missing or activation failed
 function installStatusReporter(targetDir, agentName) {
+  if (IS_DARWIN) return installStatusReporterDarwin(targetDir, agentName);
+  if (IS_LINUX) return installStatusReporterLinux(targetDir, agentName);
+  return { role: 'worker', coordinator: null };
+}
+
+function installStatusReporterDarwin(targetDir, agentName) {
   step('Installing multi-agent status reporter LaunchAgent…');
 
   const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents');
@@ -514,6 +602,197 @@ function installStatusReporter(targetDir, agentName) {
   }
   ok(`Status reporter loaded — ${agentName} is this machine's MASTER (the coordinator). Cadence: 10 min.`);
   return { role: 'master', coordinator: agentName };
+}
+
+function installStatusReporterLinux(targetDir, agentName) {
+  step('Installing multi-agent status reporter (systemd --user timer)…');
+
+  const unitDir = process.env.XDG_CONFIG_HOME
+    ? join(process.env.XDG_CONFIG_HOME, 'systemd', 'user')
+    : join(homedir(), '.config', 'systemd', 'user');
+  mkdirSync(unitDir, { recursive: true });
+
+  // Detect an existing hermit-agent status reporter (installed by a sibling).
+  let existing = [];
+  try {
+    existing = readdirSync(unitDir)
+      .filter((f) => /^hermit-.+-status-reporter\.timer$/.test(f));
+  } catch {
+    existing = [];
+  }
+  if (existing.length > 0) {
+    const m = existing[0].match(/^hermit-(.+)-status-reporter\.timer$/);
+    const coordinator = m ? m[1] : null;
+    ok(`Status reporter already installed by ${coordinator || 'a sibling'} — this hermit will be a worker (the master is ${coordinator}).`);
+    return { role: 'worker', coordinator };
+  }
+
+  const srcService = join(targetDir, 'systemd', 'status-reporter.service');
+  const srcTimer = join(targetDir, 'systemd', 'status-reporter.timer');
+  if (!existsSync(srcService) || !existsSync(srcTimer)) {
+    warn(`systemd/status-reporter.{service,timer} missing from scaffold — skipping coordinator install.`);
+    return { role: 'worker', coordinator: null };
+  }
+
+  // The coordinator's script writes alert state under .claude/state/. Make
+  // sure the dir exists so the first fire doesn't error on a missing path.
+  try { mkdirSync(join(targetDir, '.claude', 'state'), { recursive: true }); } catch {}
+
+  const timerName = `hermit-${agentName}-status-reporter.timer`;
+  const serviceName = `hermit-${agentName}-status-reporter.service`;
+  const destService = join(unitDir, serviceName);
+  const destTimer = join(unitDir, timerName);
+  const manualHint = `Install manually: cp ${srcService} ${destService} && cp ${srcTimer} ${destTimer} && systemctl --user daemon-reload && systemctl --user enable --now ${timerName}`;
+
+  try {
+    writeFileSync(destService, readFileSync(srcService));
+    writeFileSync(destTimer, readFileSync(srcTimer));
+    chmodSync(destService, 0o644);
+    chmodSync(destTimer, 0o644);
+  } catch (e) {
+    warn(`Could not copy systemd units: ${e.message}\n  ${manualHint}`);
+    return { role: 'worker', coordinator: null };
+  }
+
+  let r = spawnSync('systemctl', ['--user', 'daemon-reload'], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+  });
+  if (r.status !== 0) {
+    warn(`systemctl --user daemon-reload exited ${r.status}. Output: ${(r.stderr || r.stdout || '').trim()}`);
+    warn(`Retry manually: systemctl --user daemon-reload && systemctl --user enable --now ${timerName}`);
+    return { role: 'worker', coordinator: null };
+  }
+
+  r = spawnSync('systemctl', ['--user', 'enable', '--now', timerName], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+  });
+  if (r.status !== 0) {
+    warn(`systemctl --user enable --now ${timerName} exited ${r.status}. Output: ${(r.stderr || r.stdout || '').trim()}`);
+    warn(`Retry manually: systemctl --user enable --now ${timerName}`);
+    return { role: 'worker', coordinator: null };
+  }
+
+  // Linger sanity check — without it, the timer dies on logout (server gotcha).
+  const linger = spawnSync('loginctl', ['show-user', process.env.USER || ''], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+  });
+  if (linger.status === 0 && !/^Linger=yes$/m.test(linger.stdout || '')) {
+    warn(`Lingering not enabled for $USER — systemd --user services will stop when you log out.`);
+    warn(`Run once (may need sudo): loginctl enable-linger ${process.env.USER}`);
+  }
+
+  ok(`Status reporter loaded — ${agentName} is this machine's MASTER (the coordinator). Cadence: 10 min.`);
+  return { role: 'master', coordinator: agentName };
+}
+
+// --- Per-platform layer pruning ---
+//
+// The template ships everything: launchd + systemd templates, browser /
+// image safety scripts, all hooks. After walkCopy() we strip what doesn't
+// apply to the current platform.
+//
+//   macOS: drop systemd-user templates + sync script. macOS scaffold keeps
+//          full feature set (browser, image safety, launchd scheduling).
+//   Linux: drop launchd templates + sync script (use systemd-user instead).
+//          ALSO drop the browser layer (chrome-launcher, browser-lock,
+//          playwright-mcp-launcher, scripts/browser/, browser-automation
+//          skill) and the image-safety layer (safe-image.sh,
+//          pre-read-image.sh hook). These are macOS-shaped (sips, .app
+//          paths) and porting them is out of scope for this PR — Linux
+//          gets a deliberately reduced surface for v1. Follow-up PRs can
+//          add cross-platform versions if there's demand.
+//
+// JSON tweaks for the Linux scaffold (post-walkCopy):
+//   .claude/settings.json: remove playwright MCP server + mcp__playwright*
+//                          allow entries.
+//   .claude/settings.local.json: drop the PreToolUse Read matcher that
+//                                fires the pre-read-image hook.
+function prunePlatformLayers(targetDir) {
+  const trash = (rel, isDir) => {
+    const abs = join(targetDir, rel);
+    if (existsSync(abs)) rmSync(abs, { recursive: !!isDir, force: true });
+  };
+
+  if (IS_DARWIN) {
+    trash('systemd', true);
+    trash('scripts/systemd-sync.sh', false);
+    return;
+  }
+
+  if (!IS_LINUX) return;
+
+  // Scheduling: drop launchd, keep systemd
+  trash('launchd', true);
+  trash('scripts/launchd-sync.sh', false);
+
+  // Image safety layer (macOS sips-shaped)
+  trash('scripts/safe-image.sh', false);
+  trash('scripts/hooks/pre-read-image.sh', false);
+
+  // Browser layer (macOS .app paths, Playwright MCP)
+  trash('scripts/chrome-launcher.sh', false);
+  trash('scripts/browser-lock.sh', false);
+  trash('scripts/playwright-mcp-launcher.sh', false);
+  trash('scripts/browser', true);
+  trash('.claude/skills/browser-automation', true);
+
+  // settings.json: drop playwright MCP server + mcp__playwright* perms
+  const settingsPath = join(targetDir, '.claude', 'settings.json');
+  if (existsSync(settingsPath)) {
+    try {
+      const s = JSON.parse(readFileSync(settingsPath, 'utf8'));
+      if (s.mcpServers) {
+        delete s.mcpServers['playwright-browser'];
+        if (Object.keys(s.mcpServers).length === 0) delete s.mcpServers;
+      }
+      if (Array.isArray(s.permissions?.allow)) {
+        s.permissions.allow = s.permissions.allow.filter(
+          (p) => !/^mcp__playwright/.test(p),
+        );
+      }
+      writeFileSync(settingsPath, JSON.stringify(s, null, 2) + '\n');
+    } catch (e) {
+      warn(`Could not strip playwright MCP entries from ${settingsPath}: ${e.message}`);
+    }
+  }
+
+  // settings.local.json: drop the PreToolUse Read-matcher entry that fires
+  // pre-read-image.sh
+  const localSettingsPath = join(targetDir, '.claude', 'settings.local.json');
+  if (existsSync(localSettingsPath)) {
+    try {
+      const s = JSON.parse(readFileSync(localSettingsPath, 'utf8'));
+      const pre = s.hooks?.PreToolUse;
+      if (Array.isArray(pre)) {
+        s.hooks.PreToolUse = pre.filter((entry) =>
+          !entry.hooks?.some((h) => h.command && h.command.includes('pre-read-image.sh')),
+        );
+      }
+      writeFileSync(localSettingsPath, JSON.stringify(s, null, 2) + '\n');
+    } catch (e) {
+      warn(`Could not strip pre-read-image hook from ${localSettingsPath}: ${e.message}`);
+    }
+  }
+
+  // package.json: drop playwright dep (only used by the browser layer we
+  // just pruned). Without this strip + the npmInstall skip in main(), a
+  // Linux scaffold pulls 15 MB of playwright into node_modules for nothing.
+  const pkgPath = join(targetDir, 'package.json');
+  if (existsSync(pkgPath)) {
+    try {
+      const p = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      if (p.dependencies) {
+        delete p.dependencies.playwright;
+        if (Object.keys(p.dependencies).length === 0) delete p.dependencies;
+      }
+      writeFileSync(pkgPath, JSON.stringify(p, null, 2) + '\n');
+    } catch (e) {
+      warn(`Could not strip playwright from ${pkgPath}: ${e.message}`);
+    }
+  }
 }
 
 // --- Clone (doppel) flow ---
@@ -609,9 +888,9 @@ async function collectCloneAnswers(values, parentDir) {
   botToken = botToken.trim();
 
   step('Verifying bot token against Telegram…');
-  const bot = await validateBotToken(botToken);
+  const bot = validateBotToken(botToken);
   if (!bot) {
-    die('Telegram rejected the token (bot not found or network error). Check it and try again.');
+    die('Telegram rejected the token (bot not found or network error). Check it and try again.\n  If your machine reaches the internet via an HTTP proxy, make sure HTTPS_PROXY / https_proxy is set in this shell — curl honors them automatically.');
   }
   ok(`Bot verified: @${bot.username} (${bot.first_name})`);
 
@@ -902,6 +1181,11 @@ function chmodScripts(targetDir) {
     'scripts/chrome-launcher.sh',
     'scripts/browser-lock.sh',
     'scripts/playwright-mcp-launcher.sh',
+    'scripts/launchd-sync.sh',
+    'scripts/systemd-sync.sh',
+    'scripts/with-timeout.sh',
+    'scripts/claude-quota-probe.sh',
+    'scripts/hooks/pre-read-image.sh',
     '.claude/hooks/tg-reply-check.sh',
   ];
   for (const rel of candidates) {
@@ -973,6 +1257,7 @@ async function main() {
     CLAUDE_BIN:           prereqs.claude,
   };
   walkCopy(TEMPLATE_DIR, answers.targetDir, vars);
+  prunePlatformLayers(answers.targetDir);
   chmodScripts(answers.targetDir);
   ok(`Template copied to ${answers.targetDir}`);
 
@@ -982,8 +1267,12 @@ async function main() {
   // 3. Install telegram plugin at project scope
   installTelegramPlugin(prereqs.claude, answers.targetDir);
 
-  // 4. npm install for playwright
-  npmInstall(answers.targetDir);
+  // 4. npm install for playwright (macOS only — Linux scaffold prunes the
+  //    browser layer and drops the playwright dep, so there's nothing to
+  //    install).
+  if (IS_DARWIN) {
+    npmInstall(answers.targetDir);
+  }
 
   // 5. Pre-ack first-run dialogs so tmux startup doesn't hang on a blocked TUI
   preAcknowledgeClaudeDialogs(answers.targetDir);

@@ -1,0 +1,20 @@
+[Unit]
+# Multi-agent status digest service. Paired with status-reporter.timer; the
+# create-hermit-agent CLI installs both for the FIRST hermit on a machine
+# (the coordinator / master). Subsequent hermits detect the existing units
+# and skip installing their own.
+
+Description=Hermit agent {{AGENT_NAME}} multi-agent status digest
+
+[Service]
+Type=oneshot
+WorkingDirectory={{AGENT_DIR}}
+
+# Defensive: the script writes its alert state under .claude/state/. Make sure
+# the dir exists even if the unit is installed via systemd-sync.sh outside the
+# create-hermit-agent bootstrap path.
+ExecStartPre=/bin/mkdir -p {{AGENT_DIR}}/.claude/state
+ExecStart=/bin/bash {{AGENT_DIR}}/scripts/multi-agent-status-report.sh
+
+# Logs go to the systemd journal. View with:
+#   journalctl --user -u hermit-{{AGENT_NAME}}-status-reporter.service -f

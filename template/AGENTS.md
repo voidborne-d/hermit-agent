@@ -105,7 +105,7 @@ Rules:
 
 ## Cron Safety — HARD RULE
 
-Cron tasks (LaunchAgent plists under `launchd/com.hermit-agent.<agent>.cron-*.plist`) run as `claude -p` with the prompt from `cron/<task>.md`. Two rules for anything that fires inside a cron invocation:
+Cron tasks run as `claude -p` with the prompt from `cron/<task>.md`. The scheduling layer is platform-conditional — macOS uses LaunchAgent plists under `launchd/com.hermit-agent.<agent>.cron-*.plist` (synced via `scripts/launchd-sync.sh`); Linux uses systemd-user units under `systemd/<task>.{service,timer}` installed as `hermit-<agent>-<task>` in `~/.config/systemd/user/` (synced via `scripts/systemd-sync.sh`, tail logs with `journalctl --user -u hermit-<agent>-<task>.service`). Two rules for anything that fires inside a cron invocation:
 
 1. **Stay strictly on-prompt.** If `cron/moltbook-outreach.md` says do moltbook outreach, you do moltbook outreach — not "let me also audit X" or any ad-hoc cleanup that occurs mid-task. Cron has no human in the loop and cannot be interrupted by Telegram. Off-prompt exploration is how a cron burns half a day on the wrong thing.
 2. **Hard runtime ceiling.** Wrap every cron's `claude -p` in `scripts/with-timeout.sh 1200` (provided). Twenty minutes is the ceiling — not a target. If a task legitimately needs more than that, reshape it: split into multiple crons, preprocess outside the invocation, persist state between runs. Don't raise the timeout.

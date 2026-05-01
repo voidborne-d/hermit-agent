@@ -1,0 +1,20 @@
+[Unit]
+Description=Hermit agent {{AGENT_NAME}} cron timer: EXAMPLE-TASK (every 10m)
+
+[Timer]
+# How often to run. OnUnitActiveSec is the equivalent of launchd's StartInterval.
+# OnBootSec is the delay after the user manager starts before the first fire.
+OnBootSec=10min
+OnUnitActiveSec=10min
+
+# Persistent=false means we don't backfill missed runs after the user manager
+# was offline (e.g. server reboot). Set to true if you'd rather catch up.
+Persistent=false
+
+# The .timer must point at the corresponding .service unit. The systemd-sync.sh
+# script installs both with the prefix `hermit-{{AGENT_NAME}}-`, so reference
+# the prefixed name here.
+Unit=hermit-{{AGENT_NAME}}-cron-example.service
+
+[Install]
+WantedBy=timers.target

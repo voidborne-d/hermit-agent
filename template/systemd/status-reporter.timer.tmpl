@@ -1,0 +1,11 @@
+[Unit]
+Description=Hermit agent {{AGENT_NAME}} status reporter timer (every 10m)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=10min
+Persistent=false
+Unit=hermit-{{AGENT_NAME}}-status-reporter.service
+
+[Install]
+WantedBy=timers.target

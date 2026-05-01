@@ -1,0 +1,34 @@
+[Unit]
+# Example systemd-user service for a durable scheduled task. Pair with
+# cron-example.timer.tmpl — the timer triggers this service on a schedule.
+#
+# Workflow:
+#   1. Copy this file (and the .timer twin) into your agent's systemd/ dir under
+#      a new name, e.g. systemd/research-checkin.{service,timer}
+#   2. Edit Description, ExecStart (point it at your script), and the timer's
+#      OnUnitActiveSec.
+#   3. Sync: ./scripts/systemd-sync.sh .
+#      (writes ~/.config/systemd/user/hermit-{{AGENT_NAME}}-<task>.{service,timer}
+#       and runs systemctl --user enable --now <unit>.timer)
+#
+# Every cron's real work should be wrapped in scripts/with-timeout.sh so a
+# misbehaving task can't hold the slot forever. 1200s (20 min) is the ceiling
+# we found sane — not a target. See AGENTS.md "Cron Safety" for why.
+
+Description=Hermit agent {{AGENT_NAME}} cron task: EXAMPLE-TASK
+
+[Service]
+Type=oneshot
+WorkingDirectory={{AGENT_DIR}}
+
+# Make sure .claude/state/ exists before the task runs — many tasks write
+# state files there. Cheap to do unconditionally.
+ExecStartPre=/bin/mkdir -p {{AGENT_DIR}}/.claude/state
+ExecStart=/bin/bash -c 'cd {{AGENT_DIR}} && ./scripts/with-timeout.sh 1200 ./scripts/EXAMPLE-TASK.sh'
+
+# Logs go to the systemd journal (default). View with:
+#   journalctl --user -u hermit-{{AGENT_NAME}}-cron-example.service -f
+# We deliberately do NOT set StandardOutput=append:<file>: that path is
+# resolved at spawn time, BEFORE ExecStartPre, so a missing parent directory
+# would fail the unit with status 209/STDOUT — exactly the gotcha the
+# ExecStartPre line above is meant to avoid.
