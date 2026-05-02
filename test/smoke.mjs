@@ -311,6 +311,32 @@ const checks = [
       const s = readFileSync(join(TARGET, '.claude/skills/cron/SKILL.md'), 'utf8');
       return s.includes('开启循环任务') && s.includes('loop task');
     })()],
+  ['multi-agent-status-report.sh has pane_error_check + 403 nudge logic',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      return s.includes('pane_error_check()')
+        && s.includes('Account is no longer a member')
+        && s.includes('organization associated with this token')
+        && s.includes('NUDGE_COOLDOWN_SEC=180')
+        && s.includes('NUDGE_ESCALATE_SEC=300')
+        && s.includes('NUDGE_TEXT="继续刚才的任务"');
+    })()],
+  ['multi-agent-status-report.sh persists nudges in alert.json',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      return s.includes('prev_nudges_json')
+        && s.includes('nudges_entries')
+        && s.includes('nudges:$nudges');
+    })()],
+  ['multi-agent-status-report.sh has 403 digest cases',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      return s.includes('TOKEN INVALID — manual /login required')
+        && s.includes('403 detected (cooldown')
+        && s.includes('auto-nudged after 403')
+        && s.includes('awaiting nudge effect')
+        && s.includes('403 persists after nudge');
+    })()],
 ];
 
 let pass = 0, fail = 0;

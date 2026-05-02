@@ -82,6 +82,34 @@ pane_state_check() {
   echo "unknown"
 }
 
+# Error-marker scan in the last ~30 pane lines. Distinguishes genuine
+# token-revocation (manual /login required) from transient backend 403
+# (often self-recovers, or a single nudge revives the turn).
+# Returns: token_invalid | 403_transient | clean
+pane_error_check() {
+  local session="$1"
+  local pane recent
+  pane=$(tmux capture-pane -t "$session" -p 2>/dev/null)
+  [ -z "$pane" ] && { echo "clean"; return; }
+  recent=$(echo "$pane" | tail -30)
+  if echo "$recent" | grep -qE "Account is no longer a member|organization associated with this token"; then
+    echo "token_invalid"
+  elif echo "$recent" | grep -qE "API Error: 403|Please run /login"; then
+    echo "403_transient"
+  else
+    echo "clean"
+  fi
+}
+
+# Cooldown + retry policy for transient 403 nudge:
+# - First seen: start cooldown timer; next 3 min just observe.
+# - 3 min after first seen, no nudge yet: tmux send-keys "继续刚才的任务" Enter; mark count=1.
+# - 5 min after nudge, still 403: escalate to 🆘 (probably not transient).
+# - On clean recovery (pane churning OR pane idle w/o 403 markers): episode cleared next pass.
+NUDGE_COOLDOWN_SEC=180
+NUDGE_ESCALATE_SEC=300
+NUDGE_TEXT="继续刚才的任务"
+
 lines=()
 states_joined=""
 any_stuck=0
@@ -93,11 +121,17 @@ down_list=()
 # 🟥 stuck → 🆘 CRITICAL with a restart suggestion. Count resets on any non-stuck
 # outcome (idle / healed / running).
 prev_stuck_counts_json="{}"
+prev_nudges_json="{}"
 if [ -f "$ALERT_FILE" ]; then
   prev_stuck_counts_json=$(jq -c '.stuck_counts // {}' "$ALERT_FILE" 2>/dev/null)
   [ -z "$prev_stuck_counts_json" ] && prev_stuck_counts_json="{}"
+  prev_nudges_json=$(jq -c '.nudges // {}' "$ALERT_FILE" 2>/dev/null)
+  [ -z "$prev_nudges_json" ] && prev_nudges_json="{}"
 fi
 stuck_counts_entries=()
+# Per-agent 403 episode tracking. Only entries for agents currently in an
+# active 403 episode get persisted — clean recovery clears the entry.
+nudges_entries=()
 
 for dir in "$AGENTS_ROOT"/*/; do
   name=$(basename "$dir")
@@ -142,19 +176,66 @@ for dir in "$AGENTS_ROOT"/*/; do
     computed=idle
   fi
 
-  # Self-heal: if state=running for a while but the tmux pane is idle ❯,
-  # Stop hook likely missed (TLS / 500 / AUP abort). Reset the state file
-  # and report as idle. If the pane is actively churning we trust the state
-  # and leave it as stuck.
+  # Self-heal + 403/token-invalid handling.
+  # - state=running stuck + pane idle: Stop hook likely missed (TLS/500/AUP abort)
+  #   OR an API 403 aborted the turn. Distinguish via pane_error_check:
+  #     • token_invalid: hardcoded fail markers ("Account is no longer a member" /
+  #       "organization associated with this token") → 🆘, do not nudge.
+  #     • 403_transient: "API Error: 403" without the fail markers → cooldown +
+  #       single nudge attempt → escalate to 🆘 if no recovery.
+  #     • clean: vanilla Stop-hook-missed → reset state to idle.
+  nudge_pending_age=0
+  cooldown_remaining=0
   if [ "$computed" = "stuck" ]; then
     pane_state=$(pane_state_check "claude-$name")
     if [ "$pane_state" = "idle" ]; then
-      tmp_state=$(mktemp)
-      jq --argjson ts "$now" '.state="idle" | .last_stop_ts=$ts' "$state_file" > "$tmp_state" 2>/dev/null \
-        && mv "$tmp_state" "$state_file"
-      computed=idle
-      last_stop=$now
-      states_joined+="healed_${name};"
+      err_state=$(pane_error_check "claude-$name")
+
+      prev_first_seen=$(echo "$prev_nudges_json" | jq -r --arg k "$name" '.[$k].first_seen // 0')
+      prev_last_retry=$(echo "$prev_nudges_json" | jq -r --arg k "$name" '.[$k].last_retry // 0')
+      prev_count=$(echo "$prev_nudges_json" | jq -r --arg k "$name" '.[$k].count // 0')
+      [ "$prev_first_seen" = "null" ] && prev_first_seen=0
+      [ "$prev_last_retry" = "null" ] && prev_last_retry=0
+      [ "$prev_count" = "null" ] && prev_count=0
+
+      case "$err_state" in
+        token_invalid)
+          computed=token_invalid
+          [ "$prev_first_seen" -eq 0 ] && prev_first_seen=$now
+          nudges_entries+=("\"$name\":{\"first_seen\":$prev_first_seen,\"last_retry\":$prev_last_retry,\"count\":$prev_count,\"kind\":\"token_invalid\"}")
+          ;;
+        403_transient)
+          [ "$prev_first_seen" -eq 0 ] && prev_first_seen=$now
+          seen_age=$(( now - prev_first_seen ))
+          retry_age=$(( now - prev_last_retry ))
+
+          if [ "$prev_count" -ge 1 ] && [ "$retry_age" -ge "$NUDGE_ESCALATE_SEC" ]; then
+            computed=403_escalated
+          elif [ "$prev_count" -ge 1 ]; then
+            computed=403_nudged_pending
+            nudge_pending_age=$retry_age
+          elif [ "$seen_age" -ge "$NUDGE_COOLDOWN_SEC" ]; then
+            if [ "${DRY_RUN:-0}" != "1" ]; then
+              tmux send-keys -t "claude-$name" "$NUDGE_TEXT" Enter 2>/dev/null
+            fi
+            prev_last_retry=$now
+            prev_count=1
+            computed=403_nudged
+          else
+            computed=403_pending
+            cooldown_remaining=$(( NUDGE_COOLDOWN_SEC - seen_age ))
+          fi
+          nudges_entries+=("\"$name\":{\"first_seen\":$prev_first_seen,\"last_retry\":$prev_last_retry,\"count\":$prev_count,\"kind\":\"403_transient\"}")
+          ;;
+        clean)
+          tmp_state=$(mktemp)
+          jq --argjson ts "$now" '.state="idle" | .last_stop_ts=$ts' "$state_file" > "$tmp_state" 2>/dev/null \
+            && mv "$tmp_state" "$state_file"
+          computed=idle
+          last_stop=$now
+          states_joined+="healed_${name};"
+          ;;
+      esac
     fi
   fi
 
@@ -192,6 +273,24 @@ for dir in "$AGENTS_ROOT"/*/; do
       else
         lines+=("🟥 $name · stuck $tool_dur")
       fi
+      any_stuck=1
+      ;;
+    token_invalid)
+      lines+=("🆘 $name · TOKEN INVALID — manual /login required")
+      any_stuck=1
+      ;;
+    403_pending)
+      lines+=("🟨 $name · 403 detected (cooldown ${cooldown_remaining}s)")
+      ;;
+    403_nudged)
+      lines+=("🟧 $name · auto-nudged after 403")
+      ;;
+    403_nudged_pending)
+      dur=$(fmt_duration $nudge_pending_age)
+      lines+=("🟧 $name · awaiting nudge effect ($dur since nudge)")
+      ;;
+    403_escalated)
+      lines+=("🆘 $name · 403 persists after nudge — manual investigation")
       any_stuck=1
       ;;
   esac
@@ -348,11 +447,13 @@ else
 fi
 
 stuck_counts_json="{$(IFS=,; echo "${stuck_counts_entries[*]}")}"
+nudges_json="{$(IFS=,; echo "${nudges_entries[*]}")}"
 jq -n \
   --argjson ts "$now" \
   --arg s "$states_joined" \
   --argjson stuck "$stuck_counts_json" \
-  '{last_alert_ts:$ts, last_states:$s, stuck_counts:$stuck}' \
+  --argjson nudges "$nudges_json" \
+  '{last_alert_ts:$ts, last_states:$s, stuck_counts:$stuck, nudges:$nudges}' \
   > "$ALERT_FILE"
 
 exit 0
