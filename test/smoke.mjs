@@ -294,6 +294,23 @@ const checks = [
       const s = readFileSync(join(TARGET, '.claude/skills/provision-clone/SKILL.md'), 'utf8');
       return s.includes('Doppels are always') && s.includes('workers');
     })()],
+  ['cron skill has Loop Tasks section',
+    (() => {
+      const p = join(TARGET, '.claude/skills/cron/SKILL.md');
+      if (!existsSync(p)) return false;
+      const s = readFileSync(p, 'utf8');
+      return s.includes('## Loop Tasks (循环任务)')
+        && s.includes('Require a goal')
+        && s.includes('Verify each iteration')
+        && s.includes('No file-count limit')
+        && s.includes('Self-stop on achievement')
+        && s.includes('LOOP_TASK.md');
+    })()],
+  ['cron skill description mentions loop triggers',
+    (() => {
+      const s = readFileSync(join(TARGET, '.claude/skills/cron/SKILL.md'), 'utf8');
+      return s.includes('开启循环任务') && s.includes('loop task');
+    })()],
 ];
 
 let pass = 0, fail = 0;

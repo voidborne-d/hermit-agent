@@ -1,6 +1,6 @@
 ---
 name: cron
-description: Create, list, or delete scheduled tasks inside the current Claude session. Use when the user says "every X minutes", "cron", "schedule", "remind me", or wants recurring/one-shot tasks.
+description: Create, list, or delete scheduled tasks inside the current Claude session. Use when the user says "every X minutes", "cron", "schedule", "remind me", "开启循环任务", "持续迭代", "loop task", "iterate toward <goal>", or wants recurring/one-shot tasks.
 user_invocable: true
 ---
 
@@ -100,6 +100,35 @@ crontab -e
 ```
 
 **macOS note:** First install of crontab can hang waiting for Full Disk Access approval. Workaround: install as a LaunchAgent plist instead (see `launchctl(1)`).
+
+## Loop Tasks (循环任务)
+
+When the user says "开启循环任务" / "持续迭代 X" / "loop on X 直到 …" / "start a loop task", create a session-scoped recurring cron that iterates toward a goal until met. The agent decides how to track progress and structure each iteration — only the principles below are non-negotiable.
+
+### Principles
+
+- **Require a goal.** A concrete, verifiable end state. If the user names a topic but no terminus, ask: 目标是什么？需要一个能验证已达成的具体终点。
+- **Verify each iteration.** Build / test / metric appropriate to the work. On failure: rollback + record honestly; never pretend success.
+- **No file-count limit.** Quality matters more than minimalism. Keep each iteration a coherent theme; don't bundle unrelated work.
+- **Self-stop on achievement.** When verification confirms the goal is met, the iteration sets state to "achieved" and CronDeletes its own job.
+- **Track progress in the workspace.** Use `<workspace>/LOOP_TASK.md` — or `LOOP_TASK_<name>.md` per loop if running multiple in parallel. Format is the agent's call; what matters is that the next iteration can read it and pick up.
+
+### Defaults
+
+- Schedule: every hour at an off-tick offset (`17 * * * *`, `:23`, etc.). User can override.
+- Workspace: this agent's own root (`/Users/mac/claudeclaw/<own-name>`). User can point to a sub-project.
+- Recurring: true. Session-only (CronCreate harness limit) — warn the user; for durable use launchd.
+
+### Stop conditions
+
+- Goal achieved → state file marked achieved + CronDelete + Telegram final report.
+- User says "停 loop X" / "stop the loop" → CronDelete + state marked abandoned + Telegram confirm.
+- 3 consecutive verification failures → pause and ask the user how to proceed.
+- Session restart loses the cron (covered by the warning at creation).
+
+### Confirmation reply (after CronCreate)
+
+Goal verbatim, schedule, job ID, state-file path, and the "session-scoped — 重启就丢；要 durable 跟我说" caveat.
 
 ## Important Notes
 
