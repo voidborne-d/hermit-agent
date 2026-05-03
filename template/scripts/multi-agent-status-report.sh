@@ -110,11 +110,56 @@ NUDGE_COOLDOWN_SEC=180
 NUDGE_ESCALATE_SEC=300
 NUDGE_TEXT="继续刚才的任务"
 
+# Per-agent current context size.
+# Source A (preferred): tmux pane scrape — Claude Code REPL renders
+#   `new task? /clear to save XXX.Xk tokens` at idle, which is what the user sees.
+# Source B (fallback): latest JSONL assistant entry's usage (input + cache_creation
+#   + cache_read + output) — works when pane indicator is not visible (low context,
+#   running, or just-rotated session).
+# Returns "<numeric_tokens> <display>" on stdout, empty on no signal.
+agent_ctx_size() {
+  local agent=$1
+  local pane_match val display numeric
+  pane_match=$(tmux capture-pane -t "claude-${agent}" -p 2>/dev/null \
+    | tail -3 \
+    | grep -oE '[0-9]+(\.[0-9]+)?k tokens' \
+    | tail -1)
+  if [ -n "$pane_match" ]; then
+    val=${pane_match% tokens}; val=${val%k}
+    display="${val%.*}k"
+    numeric=$(echo "$val * 1000 / 1" | bc 2>/dev/null)
+    [ -n "$numeric" ] && echo "$numeric $display"
+    return
+  fi
+  # Project dir name = AGENTS_ROOT path with /→- substitutions, plus -<agent>.
+  # E.g. AGENTS_ROOT=/Users/mac/claudeclaw → -Users-mac-claudeclaw-<agent>.
+  local agents_root_enc
+  agents_root_enc=$(echo "$AGENTS_ROOT" | sed 's|/|-|g')
+  local proj="$HOME/.claude/projects/${agents_root_enc}-${agent}"
+  [ -d "$proj" ] || return
+  local latest
+  latest=$(ls -t "$proj"/*.jsonl 2>/dev/null | head -1)
+  [ -z "$latest" ] && return
+  local sum
+  sum=$(grep '"type":"assistant"' "$latest" 2>/dev/null \
+    | tail -1 \
+    | jq -r '.message.usage | (.input_tokens + .cache_creation_input_tokens + .cache_read_input_tokens + .output_tokens) // 0' 2>/dev/null)
+  if [ -n "$sum" ] && [ "$sum" != "null" ] && [ "$sum" -gt 0 ]; then
+    if [ "$sum" -ge 1000000 ]; then
+      display=$(printf '%.1fM' "$(echo "$sum/1000000" | bc -l)")
+    else
+      display="$((sum / 1000))k"
+    fi
+    echo "$sum $display"
+  fi
+}
+
 lines=()
 states_joined=""
 any_stuck=0
 any_active=0
 down_list=()
+ctx_entries=()
 
 # Consecutive-stuck escalation: if an agent stays stuck across >=2 back-to-back
 # digests (20+ min at the default 10-min cadence), the line promotes from
@@ -296,6 +341,11 @@ for dir in "$AGENTS_ROOT"/*/; do
   esac
 
   states_joined+="$name=$computed;"
+
+  # Capture current context size for this agent (alive only — down agents have
+  # no live REPL to scrape and a stale JSONL would mislead).
+  ctx_data=$(agent_ctx_size "$name")
+  [ -n "$ctx_data" ] && ctx_entries+=("$ctx_data $name")
 done
 
 if [ ${#down_list[@]} -gt 0 ]; then
@@ -335,6 +385,22 @@ msg="📡 agents"$'\n'
 for line in "${lines[@]}"; do
   msg+="$line"$'\n'
 done
+
+# Per-agent current context — sorted desc, 🟧 marker at >=500k (auto-compact zone
+# for 1M models is around 800k+, but >=500k = "consider /clear soon").
+if [ ${#ctx_entries[@]} -gt 0 ]; then
+  ctx_line=""
+  while read -r num display agent; do
+    [ -z "$num" ] && continue
+    marker=""
+    [ "$num" -ge 500000 ] && marker="🟧 "
+    [ -n "$ctx_line" ] && ctx_line+=" · "
+    ctx_line+="${marker}${agent} ${display}"
+  done <<< "$(printf '%s\n' "${ctx_entries[@]}" | sort -rn -k1)"
+  if [ -n "$ctx_line" ]; then
+    msg+=$'\n'"📚 context"$'\n'"$ctx_line"$'\n'
+  fi
+fi
 
 # ---------- Claude Code usage section ----------
 # Three data sources: (1) live 5h+weekly quota via /status panel scraped from a
@@ -396,8 +462,8 @@ if command -v npx >/dev/null 2>&1; then
   # Today's per-agent breakdown.
   daily_json=$(npx -y ccusage@latest daily --json --since "$(date +%Y%m%d)" -i 2>/dev/null)
   if [ -n "$daily_json" ]; then
-    total_cost=$(echo "$daily_json" | jq -r '.totals.totalCost // 0')
-    total_tok=$(echo "$daily_json" | jq -r '.totals.totalTokens // 0')
+    total_cost=$(echo "$daily_json" | jq -r '(try .totals.totalCost catch 0) // 0' 2>/dev/null || echo 0)
+    total_tok=$(echo "$daily_json" | jq -r '(try .totals.totalTokens catch 0) // 0' 2>/dev/null || echo 0)
     if [ -n "$total_cost" ] && [ "$total_cost" != "0" ]; then
       usage_lines+=("today: $(fmt_cost "$total_cost") / $(fmt_tokens "$total_tok") tok")
       # Top 3 spenders today.
@@ -446,8 +512,8 @@ else
     --data-urlencode "text=${msg}" >/dev/null 2>&1
 fi
 
-stuck_counts_json="{$(IFS=,; echo "${stuck_counts_entries[*]}")}"
-nudges_json="{$(IFS=,; echo "${nudges_entries[*]}")}"
+stuck_counts_json="{$(IFS=,; echo "${stuck_counts_entries[*]:-}")}"
+nudges_json="{$(IFS=,; echo "${nudges_entries[*]:-}")}"
 jq -n \
   --argjson ts "$now" \
   --arg s "$states_joined" \

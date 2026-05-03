@@ -337,6 +337,38 @@ const checks = [
         && s.includes('awaiting nudge effect')
         && s.includes('403 persists after nudge');
     })()],
+  ['multi-agent-status-report.sh has agent_ctx_size with pane + JSONL fallback',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      return s.includes('agent_ctx_size()')
+        && s.includes('/clear to save')
+        && s.includes('cache_read_input_tokens')
+        && s.includes('"type":"assistant"');
+    })()],
+  ['multi-agent-status-report.sh renders 📚 context section sorted desc',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      return s.includes('"📚 context"')
+        && s.includes('sort -rn -k1')
+        && s.includes('ctx_entries+=');
+    })()],
+  ['multi-agent-status-report.sh empty-array safe under set -u',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      // Empty-array protection: ${arr[*]:-} prevents `unbound variable` when
+      // nudges_entries / stuck_counts_entries are empty (no agent in 403 episode).
+      return s.includes('${stuck_counts_entries[*]:-}')
+        && s.includes('${nudges_entries[*]:-}');
+    })()],
+  ['multi-agent-status-report.sh ccusage totals tolerates non-object shape',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      // ccusage occasionally returns an array on top-level (no-data / error
+      // cases); plain `.totals.totalCost` errors with "Cannot index array
+      // with string". try/catch makes the section silently fall through.
+      return s.includes('try .totals.totalCost catch 0')
+        && s.includes('try .totals.totalTokens catch 0');
+    })()],
 ];
 
 let pass = 0, fail = 0;
