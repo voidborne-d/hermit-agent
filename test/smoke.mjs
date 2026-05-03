@@ -369,6 +369,49 @@ const checks = [
       return s.includes('try .totals.totalCost catch 0')
         && s.includes('try .totals.totalTokens catch 0');
     })()],
+
+  // ---- Linux platform support: systemd-user templates + sync script ----
+  ['systemd/cron-example.service substituted (AGENT_NAME, AGENT_DIR, no stray {{)',
+    (() => {
+      const p = join(TARGET, 'systemd/cron-example.service');
+      if (!existsSync(p)) return false;
+      const s = readFileSync(p, 'utf8');
+      return s.includes(`smoke-test`) && s.includes(TARGET) && !s.includes('{{');
+    })()],
+  ['systemd/cron-example.timer references prefixed service unit',
+    (() => {
+      const p = join(TARGET, 'systemd/cron-example.timer');
+      if (!existsSync(p)) return false;
+      return readFileSync(p, 'utf8').includes('Unit=hermit-smoke-test-cron-example.service');
+    })()],
+  ['systemd/status-reporter.service runs multi-agent-status-report.sh',
+    (() => {
+      const p = join(TARGET, 'systemd/status-reporter.service');
+      if (!existsSync(p)) return false;
+      const s = readFileSync(p, 'utf8');
+      return s.includes('multi-agent-status-report.sh') && s.includes(TARGET);
+    })()],
+  ['systemd/status-reporter.timer fires every 10min, prefixed service ref',
+    (() => {
+      const p = join(TARGET, 'systemd/status-reporter.timer');
+      if (!existsSync(p)) return false;
+      const s = readFileSync(p, 'utf8');
+      return s.includes('OnUnitActiveSec=10min') && s.includes('Unit=hermit-smoke-test-status-reporter.service');
+    })()],
+  ['scripts/systemd-sync.sh exists, is executable, has INSTALL/UPDATE verbs',
+    (() => {
+      const p = join(TARGET, 'scripts/systemd-sync.sh');
+      try {
+        if ((statSync(p).mode & 0o111) === 0) return false;
+      } catch { return false; }
+      const s = readFileSync(p, 'utf8');
+      return s.includes('INSTALL') && s.includes('UPDATE') && s.includes('systemctl --user daemon-reload') && s.includes('enable --now');
+    })()],
+  ['scripts/systemd-sync.sh warns if lingering not enabled',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/systemd-sync.sh'), 'utf8');
+      return s.includes('loginctl enable-linger') && s.includes('Linger=yes');
+    })()],
 ];
 
 let pass = 0, fail = 0;

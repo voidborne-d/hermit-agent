@@ -38,6 +38,8 @@ npx create-hermit-agent
 cd asst && ./start.sh
 ```
 
+> **Linux**: same flow, with `sudo apt install tmux jq curl` (or your distro's equivalent) and `loginctl enable-linger $USER` for systemd-user timers. Linux scaffolds ship a deliberately reduced surface — no browser, no image-safety layer. See the [Install](#install) and [FAQ](#faq) sections.
+
 Open Telegram, DM the bot you just registered with @BotFather. First DM triggers a one-shot orientation — then the agent stays out of your way.
 
 > **You:** remind me at 3pm to call mom  
@@ -93,6 +95,16 @@ Prereqs (macOS):
 - Node ≥ 18
 - `brew install tmux jq`
 - `curl -fsSL https://bun.sh/install | bash`
+
+Prereqs (Linux, tested on Ubuntu 22.04):
+
+- [Claude Code](https://docs.claude.com/claude-code) — installed and logged in
+- Node ≥ 18
+- `sudo apt install tmux jq curl` (or `dnf` / `pacman` / `apk` equivalent)
+- `curl -fsSL https://bun.sh/install | bash`
+- One-time on a server: `loginctl enable-linger $USER` so `systemd --user` timers survive logout
+
+The Linux scaffold ships **without the browser layer** (chrome-launcher, browser-lock, playwright-mcp) and **without the image-safety layer** (safe-image, pre-read-image hook). Both are macOS-shaped (sips, .app paths) and porting them is out of scope for v1 — the CLI strips them automatically on Linux. Everything else (Telegram plugin, persona, memory, scheduling, multi-agent status digest) works the same.
 
 Scaffold:
 
@@ -151,13 +163,21 @@ Just tell the agent what you want:
 
 > Every 30 minutes, scan `memory/today.md` and flag urgent items.
 
-asst's `cron` skill handles it. Tasks that must survive restarts go through `launchd`:
+asst's `cron` skill handles it. Tasks that must survive restarts go through the OS scheduler — `launchd` on macOS, `systemd --user` on Linux.
+
+### macOS (launchd)
 
 1. Drop a plist into your agent's `launchd/` folder — copy `launchd/cron-example.plist.tmpl`, set `Label` to `com.hermit-agent.<agent>.cron-<task>`, and point `ProgramArguments` at whatever you want run. Wrap the real work in `scripts/with-timeout.sh 1200` — 20 min is the ceiling, not a target.
 2. Sync to the live LaunchAgents dir: `./scripts/launchd-sync.sh .` (idempotent: `LOADED` new, `RELOAD` changed, skip unchanged; `--dry-run` to preview).
 3. Confirm: `launchctl list | grep com.hermit-agent.<agent>`.
 
-Writing the plist alone does NOT activate it — `launchd-sync.sh` is the difference between "generated" and "running". Re-run it any time you add, edit, or rename a plist. And the timeout wrapper is there for a reason: a cron that drifted off-prompt once wedged for 12h38m and blocked three fire windows. `AGENTS.md` → "Cron Safety" documents the discipline.
+### Linux (systemd-user)
+
+1. Drop a `.service` + `.timer` pair into your agent's `systemd/` folder — copy `systemd/cron-example.service` and `systemd/cron-example.timer`, edit `ExecStart` (point it at your script) and the `OnUnitActiveSec` cadence. Wrap the real work in `scripts/with-timeout.sh 1200`.
+2. Sync to `~/.config/systemd/user/`: `./scripts/systemd-sync.sh .` (idempotent: `INSTALL` new, `UPDATE` changed, skip unchanged; `--dry-run` to preview). The script `daemon-reload`s and `enable --now`s every timer it finds, and warns if lingering isn't enabled.
+3. Confirm: `systemctl --user list-timers 'hermit-<agent>-*'`. Tail logs with `journalctl --user -u hermit-<agent>-<task>.service -f`.
+
+Writing the unit files alone does NOT activate them — the sync script is the difference between "generated" and "running". Re-run it any time you add, edit, or rename a unit. And the timeout wrapper is there for a reason: a cron that drifted off-prompt once wedged for 12h38m and blocked three fire windows. `AGENTS.md` → "Cron Safety" documents the discipline.
 
 ---
 
@@ -234,7 +254,8 @@ Override the probed `claude` binary with `CLAUDE_BIN=/path/to/claude` in the Lau
 No. `create-hermit-agent` runs `claude plugin install telegram@claude-plugins-official -s project` for every new agent. First install downloads to `~/.claude/plugins/cache/`; subsequent agents register against the cache per-project. Zero manual plugin setup.
 
 **Linux / Windows support?**  
-macOS only. `launchctl`, `sips`, `tmux` are all macOS-shaped. PRs welcome.
+**Linux**: yes, with caveats. The CLI auto-detects the platform and ships a reduced surface for Linux v1 — no browser layer, no image-safety layer (both are macOS-shaped: sips, `.app` paths, Playwright integration tuned for Chrome on macOS). The CLI strips those scripts and the related `settings.json` / `settings.local.json` entries on Linux scaffolds so the agent dir doesn't carry dead files. Scheduling uses `systemd --user` instead of `launchd`. Telegram plugin, persona, memory, multi-agent status digest, and the `cron -p` Bot API push path all work the same.  
+**Windows**: not supported. WSL2 might work (it's effectively Linux) but isn't tested.
 
 **Can multiple agents share a bot token?**  
 No. Telegram's Bot API routes each bot's updates to exactly one listener. Sharing causes message hijacking. Each agent needs its own `@BotFather`-issued token.
@@ -248,7 +269,19 @@ No. The CLI pre-populates `~/.claude/channels/telegram-<name>/access.json` with 
 **How do I delete an agent cleanly?**
 
 ```bash
-tmux kill-session -t claude-<name>
+# macOS:
+launchctl unload ~/Library/LaunchAgents/com.hermit-agent.<name>.*.plist 2>/dev/null
+rm -f ~/Library/LaunchAgents/com.hermit-agent.<name>.*.plist
+
+# Linux:
+for u in ~/.config/systemd/user/hermit-<name>-*.{service,timer}; do
+  [ -f "$u" ] && systemctl --user disable --now "$(basename "$u")"
+done
+rm -f ~/.config/systemd/user/hermit-<name>-*.{service,timer}
+systemctl --user daemon-reload
+
+# Both:
+tmux kill-session -t claude-<name> 2>/dev/null
 rm -rf <agent-folder>
 rm -rf ~/.claude/channels/telegram-<name>
 ```
