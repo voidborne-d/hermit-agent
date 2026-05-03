@@ -369,6 +369,16 @@ const checks = [
       return s.includes('try .totals.totalCost catch 0')
         && s.includes('try .totals.totalTokens catch 0');
     })()],
+  ['multi-agent-status-report.sh detects dead Telegram plugin (silent agent)',
+    (() => {
+      const s = readFileSync(join(TARGET, 'scripts/multi-agent-status-report.sh'), 'utf8');
+      // plugin_check looks for `bun … telegram` child of the agent's claude
+      // pid. If missing, claude is alive but the MCP server is dead, so the
+      // agent silently drops every inbound DM until restart.
+      return s.includes('plugin_check()')
+        && s.includes('bun.*telegram')
+        && s.includes('TG plugin dead (restart needed)');
+    })()],
 
   // ---- Linux platform support: systemd-user templates + sync script ----
   ['systemd/cron-example.service substituted (AGENT_NAME, AGENT_DIR, no stray {{)',

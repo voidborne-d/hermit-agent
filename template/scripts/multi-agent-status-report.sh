@@ -82,6 +82,32 @@ pane_state_check() {
   echo "unknown"
 }
 
+# Telegram plugin liveness check. Each agent's claude process spawns a `bun`
+# child that runs the MCP Telegram server (server.ts). If that bun dies, the
+# claude process stays alive but goes silent: no inbound messages reach the
+# session, and reply tools fail. We detect by checking for a `bun … telegram`
+# child of the agent's claude pid.
+# Past incident: an agent's bun died sometime after a successful turn (no
+# crash report, no system OOM signal — clean exit somehow). The user's
+# subsequent message sat in Telegram's queue for hours until manual restart.
+# Returns: dead | ok | unknown (no claude pid file)
+plugin_check() {
+  local agent=$1
+  local pid_file="$AGENTS_ROOT/$agent/agent.pid"
+  [ ! -f "$pid_file" ] && { echo "unknown"; return; }
+  local pid
+  pid=$(cat "$pid_file" 2>/dev/null)
+  [ -z "$pid" ] && { echo "unknown"; return; }
+  kill -0 "$pid" 2>/dev/null || { echo "unknown"; return; }
+  local bun_child
+  bun_child=$(ps -ef | awk -v p="$pid" '$3==p && /bun.*telegram/ {print $2}' | head -1)
+  if [ -z "$bun_child" ]; then
+    echo "dead"
+  else
+    echo "ok"
+  fi
+}
+
 # Error-marker scan in the last ~30 pane lines. Distinguishes genuine
 # token-revocation (manual /login required) from transient backend 403
 # (often self-recovers, or a single nudge revives the turn).
@@ -341,6 +367,18 @@ for dir in "$AGENTS_ROOT"/*/; do
   esac
 
   states_joined+="$name=$computed;"
+
+  # Telegram plugin liveness — silent failure mode if bun dies, claude stays
+  # alive but agent goes deaf. Mark the line + force any_stuck so cooldown
+  # tightens to 10-min cadence; user must restart agent manually (auto-restart
+  # would lose mid-turn state).
+  plugin_state=$(plugin_check "$name")
+  if [ "$plugin_state" = "dead" ]; then
+    last_idx=$(( ${#lines[@]} - 1 ))
+    lines[$last_idx]+=" · 🆘 TG plugin dead (restart needed)"
+    states_joined+="${name}_plugin=dead;"
+    any_stuck=1
+  fi
 
   # Capture current context size for this agent (alive only — down agents have
   # no live REPL to scrape and a stale JSONL would mislead).
