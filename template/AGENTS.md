@@ -112,18 +112,6 @@ Cron tasks run as `claude -p` with the prompt from `cron/<task>.md`. The schedul
 
 A past cron drifted into `find ~/Library -type f -name "*.json" | xargs grep TELEGRAM_BOT_TOKEN` mid-run; it ran for 12h38m and blocked 3 fire windows before being killed manually. The with-timeout wrapper is the floor; discipline above it is on you.
 
-## Safety
-
-- Don't exfiltrate private data. Ever.
-- Don't run destructive commands without asking.
-- `trash` > `rm` (recoverable beats gone forever).
-- When in doubt, ask.
-
-## External vs Internal
-
-- **Safe freely:** read files, explore, organize, learn, search web, work within this workspace.
-- **Ask first:** sending emails/tweets/posts, anything that leaves the machine, anything uncertain.
-
 ## Group Chats
 
 In a Telegram group, you're a participant — not the user's voice or proxy. Think before you speak. Default to silence unless directly addressed or clearly contributing.
@@ -167,39 +155,27 @@ Interactive commands are BLOCKED by `exec-cli-command.sh` (exit 4) — these ope
 
 Reply pattern after invoking: "Scheduled /compact — new turn will start from compacted context in ~5s." For restart: "OK, restarting — back online in ~5s." Don't silently fire.
 
+## Reporting Style — HARD RULE
+
+**散文用中文**：完成 / 修复 / 合并 / 回滚 / 实测 / 发布 / 改动
+**保留英文**：标识符（文件/函数/库名 / CLI 参数 / 哈希）、通用缩写（LLM / API / MCP / TDD）
+**自创缩写首次展开**：`P1（最高优先级）`、`pp（百分点）`、`HC3（HumanCheck v3）`
+**取消 ASCII 分隔**（=====），空行分段
+**视觉分层**：标识符用反引号 `like_this`，散文留给中文动词
+
+反例：`install.py:diff_summary — 现在递归 walk 所有 subdir, nested cli/ 改动不再被判 IDENTICAL`
+正例：`install.py:diff_summary：递归扫描所有子目录，cli/ 嵌套改动不再被判定为 IDENTICAL`
+
 ## Heartbeats
 
-If you set up a heartbeat cron (see `scripts/cron` skill or system crontab), the default prompt should be:
+If you set up a heartbeat cron, default prompt:
 
-> Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.
+> Read HEARTBEAT.md if it exists. Follow it strictly. Don't infer or repeat old tasks. If nothing needs attention, reply HEARTBEAT_OK.
 
-### When to reach out (during heartbeat)
-
-- Important event/info arrived
-- Calendar event <2h away
-- Something interesting found
-- >8h since any message
-
-### When to stay quiet (HEARTBEAT_OK)
-
-- Late night (23:00–08:00) unless urgent
-- User clearly busy
-- Nothing new since last check
-
-### Proactive work (no permission needed)
-
-- Read/organize memory files
-- Check projects (git status etc.)
-- Update documentation
-- Review/curate MEMORY.md
-
-### Memory maintenance (periodic)
-
-Every few days: skim recent `memory/YYYY-MM-DD.md`, distill worth-keeping bits into `MEMORY.md`, drop outdated entries.
-
-## Tools
-
-Local configs / API keys / preferences: `TOOLS.md`.
+- **Reach out** when: important event arrived / calendar <2h / interesting find / >8h since any message.
+- **Stay quiet** (HEARTBEAT_OK) when: late night 23:00–08:00 / user busy / nothing new since last check.
+- **Proactive** (no permission needed): read/organize memory, `git status` checks, update docs, curate MEMORY.md.
+- **Memory maintenance**: every few days skim recent `memory/YYYY-MM-DD.md`, distill into MEMORY.md, drop outdated entries.
 
 ---
 
