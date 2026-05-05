@@ -65,8 +65,11 @@ const checks = [
     readFileSync(join(TARGET, '.claude/settings.local.json'), 'utf8').includes('<<DUMMY_TOKEN>>')],
   ['settings.local.json has substituted CHAT_ID',
     readFileSync(join(TARGET, '.claude/settings.local.json'), 'utf8').includes('"TELEGRAM_CHAT_ID": "9999999"')],
-  ['CLAUDE.md has substituted AGENT_DIR',
-    readFileSync(join(TARGET, 'CLAUDE.md'), 'utf8').includes(TARGET)],
+  ['CLAUDE.md trimmed (no Memory/Skills/Workspace sections)',
+    (() => {
+      const c = readFileSync(join(TARGET, 'CLAUDE.md'), 'utf8');
+      return !c.includes('## Memory') && !c.includes('## Skills') && !c.includes('## Workspace');
+    })()],
   ['IDENTITY.md has substituted display name',
     readFileSync(join(TARGET, 'IDENTITY.md'), 'utf8').includes('Smoke Test')],
   ['TOOLS.md has substituted USER_TG_ID',
